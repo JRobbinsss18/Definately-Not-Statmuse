@@ -20,14 +20,9 @@ class NBAAPIClient:
         time.sleep(self.rate_limit_delay)
     
     def get_player_id(self, player_name: str) -> Optional[int]:
-        # Use reverse search strategy with confidence scoring for all searches
-        # This ensures proper last name matching and disambiguation
         return self._reverse_search_player(player_name)
     
     def _reverse_search_player(self, player_name: str) -> Optional[int]:
-        """
-        Reverse search: Start with perfect last name matches, build confidence levels
-        """
         # First try perfect exact match using NBA API (for cases like "LeBron James")
         player_dict = players.find_players_by_full_name(player_name)
         if player_dict and len(player_dict) == 1:  # Only if exactly one perfect match
@@ -43,7 +38,6 @@ class NBAAPIClient:
         # Extract last name - this MUST match perfectly
         last_name = name_parts[-1]
         
-        # Step 1: Find all players with PERFECT last name match
         last_name_candidates = []
         for player in all_players:
             player_parts = player['full_name'].lower().split()
@@ -51,32 +45,22 @@ class NBAAPIClient:
                 last_name_candidates.append(player)
         
         if not last_name_candidates:
-            return None  # No perfect last name match = no results
+            return None
         
-        # Step 2: Score confidence for each candidate
         scored_candidates = []
         for player in last_name_candidates:
             confidence = self._calculate_player_confidence(player, name_parts)
             scored_candidates.append((player, confidence))
         
-        # Step 3: Sort by confidence (highest first), then by recency (ID)
         scored_candidates.sort(key=lambda x: (x[1], x[0]['id']), reverse=True)
         
-        # Step 4: Check for disambiguation needed
         return self._handle_player_disambiguation(scored_candidates, player_name)
     
     def _calculate_player_confidence(self, player: dict, search_name_parts: list) -> float:
-        """
-        Calculate confidence score for a player match
-        Perfect last name match is prerequisite (already filtered)
-        """
         player_parts = player['full_name'].lower().split()
         confidence = 0.0
-        
-        # Base confidence for perfect last name match
         confidence += 50.0
         
-        # Bonus for matching first name
         if len(search_name_parts) >= 2 and len(player_parts) >= 2:
             search_first = search_name_parts[0]
             player_first = player_parts[0]
@@ -86,9 +70,8 @@ class NBAAPIClient:
             elif search_first in player_first or player_first in search_first:
                 confidence += 20.0  # Partial first name match
         
-        # Bonus for matching middle names/initials
         if len(search_name_parts) > 2 and len(player_parts) > 2:
-            search_middle = search_name_parts[1:-1]  # Everything except first and last
+            search_middle = search_name_parts[1:-1]
             player_middle = player_parts[1:-1]
             
             for s_mid in search_middle:
@@ -97,8 +80,6 @@ class NBAAPIClient:
                         confidence += 10.0
         
         # Career activity bonus - prioritize players who are more likely to be actively discussed
-        # This is tricky because higher ID doesn't always mean "better" player
-        # Instead, we'll use ID ranges to identify likely active vs historical players
         player_id = player['id']
         
         if player_id > 1000000:  # Recent draft classes (2017+)
@@ -115,9 +96,6 @@ class NBAAPIClient:
         return confidence
     
     def _handle_player_disambiguation(self, scored_candidates: list, original_query: str) -> Optional[int]:
-        """
-        Handle cases where multiple high-confidence matches exist
-        """
         if not scored_candidates:
             return None
             
@@ -146,19 +124,12 @@ class NBAAPIClient:
         return self._request_user_disambiguation(high_confidence_candidates, original_query)
     
     def _request_user_disambiguation(self, candidates: list, original_query: str) -> Optional[int]:
-        """
-        Request user to choose between multiple high-confidence player matches
-        This will be handled by returning None and letting the error handler present options
-        """
         # Store disambiguation data for the error handler to use
         self._disambiguation_candidates = candidates
         self._disambiguation_query = original_query
         return None
     
     def get_disambiguation_options(self) -> Optional[Dict]:
-        """
-        Get stored disambiguation options from the last search
-        """
         if not self._disambiguation_candidates:
             return None
         
@@ -176,7 +147,6 @@ class NBAAPIClient:
         }
     
     def clear_disambiguation(self):
-        """Clear stored disambiguation data"""
         self._disambiguation_candidates = None
         self._disambiguation_query = None
     
@@ -216,11 +186,9 @@ class NBAAPIClient:
         
         query_lower = query_name.lower().strip()
         
-        # Only use nickname mapping for clear nicknames, not common last names
         if query_lower in nickname_mappings:
             return nickname_mappings[query_lower]
         
-        # For everything else, return as-is and let the reverse search handle it
         return query_name
     
     def get_player_career_stats(self, player_id: int) -> pd.DataFrame:

@@ -27,29 +27,9 @@ class LLMProcessor:
             return []
         
     def parse_query(self, user_query: str) -> QueryParsing:
-        parsing_prompt = f"""
-        Analyze this NBA query and extract structured information. Return ONLY valid JSON.
+        parsing_prompt = f"Analyze this NBA query: {user_query}. Return JSON with query_type, players, teams, seasons, attributes, time_context."
         
-        Query: "{user_query}"
-        
-        Extract:
-        1. query_type: one of [compare_players, compare_teams, analyze_player, analyze_team, predict_player, predict_team]
-        2. players: list of player names mentioned (resolve nicknames: Curry->Stephen Curry, LeBron->LeBron James, etc.)
-        3. teams: list of team names mentioned
-        4. seasons: list of specific seasons mentioned (format: 2023-24)
-        5. attributes: specific stats mentioned (points, rebounds, assists, shooting, etc.)
-        6. time_context: one of [career, season, specific_year]
-        
-        Examples:
-        "Compare LeBron James to Steph Curry" -> {{"query_type": "compare_players", "players": ["LeBron James", "Stephen Curry"], "teams": [], "seasons": [], "attributes": [], "time_context": "career"}}
-        "How did the Lakers perform in 2020?" -> {{"query_type": "analyze_team", "players": [], "teams": ["Los Angeles Lakers"], "seasons": ["2019-20"], "attributes": [], "time_context": "specific_year"}}
-        
-        Return only the JSON object:
-        """
-        
-        # Always use fallback parsing to avoid Ollama issues
         if not self.available_models or self.model_name not in self.available_models:
-            print(f"[PARSING] Ollama model {self.model_name} not available, using fallback parsing")
             return self._fallback_parse(user_query)
             
         try:
@@ -72,11 +52,8 @@ class LLMProcessor:
                     attributes=parsed_data.get('attributes', []),
                     time_context=parsed_data.get('time_context', 'career')
                 )
-        except Exception as e:
-            print(f"[PARSING] Error parsing query with LLM: {e}")
-            
-        # Fallback parsing
-        return self._fallback_parse(user_query)
+        except Exception:
+            return self._fallback_parse(user_query)
     
     def _fallback_parse(self, query: str) -> QueryParsing:
         query_lower = query.lower()
@@ -100,73 +77,36 @@ class LLMProcessor:
         else:
             query_type = 'analyze_player'
             
-        # Extract players with better pattern matching
         players = []
         player_names = {
-            'lebron': 'LeBron James',
-            'james': 'LeBron James',
-            'curry': 'Stephen Curry',
-            'stephen': 'Stephen Curry',
-            'steph': 'Stephen Curry',
-            'durant': 'Kevin Durant',
-            'kd': 'Kevin Durant',
-            'giannis': 'Giannis Antetokounmpo',
-            'antetokounmpo': 'Giannis Antetokounmpo',
-            'luka': 'Luka Doncic',
-            'doncic': 'Luka Doncic',
-            'jordan': 'Michael Jordan',
-            'mj': 'Michael Jordan',
-            'kobe': 'Kobe Bryant',
-            'bryant': 'Kobe Bryant',
-            'ayo': 'Ayo Dosunmu',
-            'dosunmu': 'Ayo Dosunmu',
-            'tatum': 'Jayson Tatum',
-            'jayson': 'Jayson Tatum',
-            'booker': 'Devin Booker',
-            'devin': 'Devin Booker',
-            'morant': 'Ja Morant',
-            'ja': 'Ja Morant',
-            'zion': 'Zion Williamson',
-            'williamson': 'Zion Williamson',
-            'coby': 'Coby White',
-            'klay': 'Klay Thompson',
-            'thompson': 'Klay Thompson'
+            'lebron': 'LeBron James', 'james': 'LeBron James',
+            'curry': 'Stephen Curry', 'stephen': 'Stephen Curry', 'steph': 'Stephen Curry',
+            'durant': 'Kevin Durant', 'kd': 'Kevin Durant',
+            'giannis': 'Giannis Antetokounmpo', 'antetokounmpo': 'Giannis Antetokounmpo',
+            'luka': 'Luka Doncic', 'doncic': 'Luka Doncic',
+            'jordan': 'Michael Jordan', 'mj': 'Michael Jordan',
+            'kobe': 'Kobe Bryant', 'bryant': 'Kobe Bryant',
+            'ayo': 'Ayo Dosunmu', 'dosunmu': 'Ayo Dosunmu',
+            'tatum': 'Jayson Tatum', 'jayson': 'Jayson Tatum',
+            'booker': 'Devin Booker', 'devin': 'Devin Booker',
+            'morant': 'Ja Morant', 'ja': 'Ja Morant',
+            'zion': 'Zion Williamson', 'williamson': 'Zion Williamson',
+            'coby': 'Coby White', 'klay': 'Klay Thompson', 'thompson': 'Klay Thompson'
         }
         
-        # Extract team names
         teams = []
         team_names = {
-            'lakers': 'Los Angeles Lakers',
-            'warriors': 'Golden State Warriors', 
-            'bulls': 'Chicago Bulls',
-            'celtics': 'Boston Celtics',
-            'heat': 'Miami Heat',
-            'knicks': 'New York Knicks',
-            'nets': 'Brooklyn Nets',
-            'sixers': '76ers',
-            'raptors': 'Toronto Raptors',
-            'magic': 'Orlando Magic',
-            'hawks': 'Atlanta Hawks',
-            'hornets': 'Charlotte Hornets',
-            'pistons': 'Detroit Pistons',
-            'pacers': 'Indiana Pacers',
-            'cavaliers': 'Cleveland Cavaliers',
-            'cavs': 'Cleveland Cavaliers',
-            'bucks': 'Milwaukee Bucks',
-            'timberwolves': 'Minnesota Timberwolves',
-            'thunder': 'Oklahoma City Thunder',
-            'blazers': 'Portland Trail Blazers',
-            'jazz': 'Utah Jazz',
-            'nuggets': 'Denver Nuggets',
-            'clippers': 'LA Clippers',
-            'suns': 'Phoenix Suns',
-            'kings': 'Sacramento Kings',
-            'mavericks': 'Dallas Mavericks',
-            'mavs': 'Dallas Mavericks',
-            'rockets': 'Houston Rockets',
-            'grizzlies': 'Memphis Grizzlies',
-            'pelicans': 'New Orleans Pelicans',
-            'spurs': 'San Antonio Spurs'
+            'lakers': 'Los Angeles Lakers', 'warriors': 'Golden State Warriors', 
+            'bulls': 'Chicago Bulls', 'celtics': 'Boston Celtics', 'heat': 'Miami Heat',
+            'knicks': 'New York Knicks', 'nets': 'Brooklyn Nets', 'sixers': '76ers',
+            'raptors': 'Toronto Raptors', 'magic': 'Orlando Magic', 'hawks': 'Atlanta Hawks',
+            'hornets': 'Charlotte Hornets', 'pistons': 'Detroit Pistons', 'pacers': 'Indiana Pacers',
+            'cavaliers': 'Cleveland Cavaliers', 'cavs': 'Cleveland Cavaliers', 'bucks': 'Milwaukee Bucks',
+            'timberwolves': 'Minnesota Timberwolves', 'thunder': 'Oklahoma City Thunder',
+            'blazers': 'Portland Trail Blazers', 'jazz': 'Utah Jazz', 'nuggets': 'Denver Nuggets',
+            'clippers': 'LA Clippers', 'suns': 'Phoenix Suns', 'kings': 'Sacramento Kings',
+            'mavericks': 'Dallas Mavericks', 'mavs': 'Dallas Mavericks', 'rockets': 'Houston Rockets',
+            'grizzlies': 'Memphis Grizzlies', 'pelicans': 'New Orleans Pelicans', 'spurs': 'San Antonio Spurs'
         }
         
         words = query_lower.split()
@@ -180,40 +120,30 @@ class LLMProcessor:
                 if full_name not in teams:
                     teams.append(full_name)
         
-        # Check if we have teams but no players - should be team analysis
         if teams and not players:
             if query_type == 'analyze_player':
                 query_type = 'analyze_team'
             elif query_type == 'predict_player':
                 query_type = 'predict_team'
         
-        # If no players found through nickname mapping, try to extract from query directly
         if not players and (query_type in ['analyze_player', 'predict_player', 'compare_players']):
-            # Look for capitalized words that might be names, excluding common action words
             potential_names = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', query)
-            
-            # Filter out common action words that aren't player names
             action_words = {'Predict', 'Analyze', 'Compare', 'Show', 'Tell', 'Find', 'Get', 'Display'}
             
             for name in potential_names:
                 name_parts = name.split()
-                # Skip if first word is an action word
                 if name_parts[0] in action_words:
-                    # Try to extract the rest as a name
-                    if len(name_parts) > 2:  # "Predict Marcus Smart" -> "Marcus Smart"
+                    if len(name_parts) > 2:
                         clean_name = ' '.join(name_parts[1:])
                         if len(clean_name.split()) >= 2:
                             players.append(clean_name)
-                elif len(name_parts) >= 2:  # Likely a full name without action words
+                elif len(name_parts) >= 2:
                     players.append(name)
         
-        # Final check: if no players found but we have teams, ensure it's a team query
         if not players and teams and query_type in ['analyze_player', 'predict_player']:
             query_type = 'analyze_team' if query_type == 'analyze_player' else 'predict_team'
         
-        # If it's a comparison but we don't have 2 players, try to extract from "to" or "vs"
         if query_type == 'compare_players' and len(players) < 2:
-            # Look for pattern like "X to Y" or "X vs Y"
             vs_match = re.search(r'(\w+)\s+(?:to|vs|versus)\s+(\w+)', query_lower)
             if vs_match:
                 name1 = vs_match.group(1)
@@ -223,10 +153,7 @@ class LLMProcessor:
                 if name2 in player_names and player_names[name2] not in players:
                     players.append(player_names[name2])
         
-        # Extract specific stats/attributes requested
         attributes = self._extract_stat_attributes(query_lower)
-        
-        # Extract time intervals and seasons
         time_context, seasons = self._extract_time_context(query)
         
         return QueryParsing(
@@ -239,74 +166,32 @@ class LLMProcessor:
         )
     
     def _extract_stat_attributes(self, query_lower: str) -> List[str]:
-        """Extract specific statistical attributes from the query"""
         attributes = []
-        
-        # Comprehensive stat mapping
         stat_mappings = {
-            # Scoring stats
-            'points': 'PTS',  # Total points per season
-            'ppg': 'PPG',  # Points per game (calculated)
-            'points per game': 'PPG',
-            'scoring': 'PPG',  # Default to per-game for "scoring"
-            
-            # Rebounding stats  
-            'rebounds': 'REB',  # Total rebounds per season
-            'rpg': 'RPG',  # Rebounds per game (calculated)
-            'rebounds per game': 'RPG',
-            'rebounding': 'RPG',  # Default to per-game for "rebounding"
-            
-            # Assists stats
-            'assists': 'AST',  # Total assists per season
-            'apg': 'APG',  # Assists per game (calculated)
-            'assists per game': 'APG',
-            'playmaking': 'APG',  # Default to per-game for "playmaking"
-            
-            # Shooting stats
-            'field goal percentage': 'FG_PCT',
-            'field goal %': 'FG_PCT',
-            'fg%': 'FG_PCT',
-            'fg percentage': 'FG_PCT',
-            'shooting percentage': 'FG_PCT',
-            'three point percentage': 'FG3_PCT',
-            '3pt %': 'FG3_PCT',
-            '3p%': 'FG3_PCT',
-            'free throw percentage': 'FT_PCT',
-            'ft%': 'FT_PCT',
-            
-            # Defensive stats
-            'steals': 'STL',
-            'spg': 'STL',
-            'steals per game': 'STL', 
-            'blocks': 'BLK',
-            'bpg': 'BLK',
-            'blocks per game': 'BLK',
-            
-            # Advanced stats
-            'turnovers': 'TOV',
-            'tpg': 'TOV',
-            'turnovers per game': 'TOV',
-            'minutes': 'MIN',
-            'mpg': 'MIN',
-            'minutes per game': 'MIN'
+            'points': 'PTS', 'ppg': 'PPG', 'points per game': 'PPG', 'scoring': 'PPG',
+            'rebounds': 'REB', 'rpg': 'RPG', 'rebounds per game': 'RPG', 'rebounding': 'RPG',
+            'assists': 'AST', 'apg': 'APG', 'assists per game': 'APG', 'playmaking': 'APG',
+            'field goal percentage': 'FG_PCT', 'field goal %': 'FG_PCT', 'fg%': 'FG_PCT',
+            'fg percentage': 'FG_PCT', 'shooting percentage': 'FG_PCT',
+            'three point percentage': 'FG3_PCT', '3pt %': 'FG3_PCT', '3p%': 'FG3_PCT',
+            'free throw percentage': 'FT_PCT', 'ft%': 'FT_PCT',
+            'steals': 'STL', 'spg': 'STL', 'steals per game': 'STL', 
+            'blocks': 'BLK', 'bpg': 'BLK', 'blocks per game': 'BLK',
+            'turnovers': 'TOV', 'tpg': 'TOV', 'turnovers per game': 'TOV',
+            'minutes': 'MIN', 'mpg': 'MIN', 'minutes per game': 'MIN'
         }
         
-        # Check for stat mentions in query
         for phrase, stat_code in stat_mappings.items():
-            if phrase in query_lower:
-                if stat_code not in attributes:
-                    attributes.append(stat_code)
+            if phrase in query_lower and stat_code not in attributes:
+                attributes.append(stat_code)
         
         return attributes
     
     def _extract_time_context(self, query: str) -> Tuple[str, List[str]]:
-        """Extract time context and specific seasons from query"""
         query_lower = query.lower()
         seasons = []
         
-        # Time interval patterns - check more specific patterns first
         if any(phrase in query_lower for phrase in ['over the next', 'next several', 'coming seasons', 'over next']):
-            # Extract number from patterns like "over the next 4 years" or "next 3 seasons"
             numbers = re.findall(r'(\d+)', query_lower)
             if numbers:
                 num = int(numbers[0])
@@ -315,7 +200,7 @@ class LLMProcessor:
                 else:
                     time_context = 'next_season'
             else:
-                time_context = 'next_3_seasons'  # Default to 3 seasons
+                time_context = 'next_3_seasons'
         elif any(phrase in query_lower for phrase in ['next 2 seasons', 'next two seasons', 'next 2 years', 'next two years']):
             time_context = 'next_2_seasons'
         elif any(phrase in query_lower for phrase in ['next 3 seasons', 'next three seasons', 'next 3 years', 'next three years']):
@@ -337,7 +222,6 @@ class LLMProcessor:
         elif any(phrase in query_lower for phrase in ['rivalry', 'head to head', 'versus history', 'matchup history']):
             time_context = 'rivalry_history'
         else:
-            # Check for specific year mentions
             season_pattern = r'(\d{4})'
             years = re.findall(season_pattern, query)
             formatted_seasons = []
@@ -345,7 +229,6 @@ class LLMProcessor:
                 year_int = int(year)
                 if 1996 <= year_int <= 2024:
                     formatted_seasons.append(f"{year_int}-{str(year_int + 1)[2:]}")
-            
             if formatted_seasons:
                 seasons = formatted_seasons
                 time_context = 'specific_year'
@@ -355,18 +238,14 @@ class LLMProcessor:
         return time_context, seasons
     
     def generate_analysis_response(self, query: str, data: Dict, parsing: QueryParsing) -> str:
-        # Use context-aware basic analysis that actually addresses the query
         try:
             return self._generate_basic_analysis(query, data, parsing)
-        except Exception as e:
-            print(f"[ANALYSIS] Error generating analysis: {e}")
+        except Exception:
             return f"Analysis completed. Data retrieved successfully for: {query}"
     
     def _generate_basic_analysis(self, query: str, data: Dict, parsing: QueryParsing) -> str:
-        """Generate basic rule-based analysis without LLM"""
         analysis = f"## Analysis Results\n\n"
         
-        # Direct answer to the query
         analysis += f"**Query: \"{query}\"**\n\n"
         
         if parsing.query_type == "explain_comparison":
@@ -375,7 +254,6 @@ class LLMProcessor:
                 p2_name = data['player2_name']
                 analysis += f"**Answer: Why {p1_name} vs {p2_name} - Detailed Comparison Explanation**\n\n"
                 
-                # Explanation-focused analysis with actual statistical comparison
                 if 'player1_stats' in data and 'player2_stats' in data:
                     p1_stats = data['player1_stats']
                     p2_stats = data['player2_stats']
@@ -386,7 +264,6 @@ class LLMProcessor:
                         
                         analysis += f"**Key Statistical Advantages:**\n"
                         
-                        # Compare major stats and explain advantages
                         stat_comparisons = [
                             ('PTS', 'GP', 'Scoring', 'PPG'),
                             ('REB', 'GP', 'Rebounding', 'RPG'),  
@@ -523,18 +400,12 @@ class LLMProcessor:
                             # General comparison - show all key stats
                             stats_to_show = ['PPG', 'RPG', 'APG']  # Default to per-game stats
                         
-                        # Map stats to their raw data equivalents and display names
                         stat_mappings = {
-                            'PTS': ('PTS', 'Points', 'PPG'),
-                            'PPG': ('PTS', 'Points', 'PPG'),
-                            'REB': ('REB', 'Rebounds', 'RPG'), 
-                            'RPG': ('REB', 'Rebounds', 'RPG'),
-                            'AST': ('AST', 'Assists', 'APG'),
-                            'APG': ('AST', 'Assists', 'APG'),
-                            'STL': ('STL', 'Steals', 'SPG'),
-                            'BLK': ('BLK', 'Blocks', 'BPG'),
-                            'FG_PCT': ('FG_PCT', 'Field Goal %', '%'),
-                            'FG3_PCT': ('FG3_PCT', '3-Point %', '%'),
+                            'PTS': ('PTS', 'Points', 'PPG'), 'PPG': ('PTS', 'Points', 'PPG'),
+                            'REB': ('REB', 'Rebounds', 'RPG'), 'RPG': ('REB', 'Rebounds', 'RPG'),
+                            'AST': ('AST', 'Assists', 'APG'), 'APG': ('AST', 'Assists', 'APG'),
+                            'STL': ('STL', 'Steals', 'SPG'), 'BLK': ('BLK', 'Blocks', 'BPG'),
+                            'FG_PCT': ('FG_PCT', 'Field Goal %', '%'), 'FG3_PCT': ('FG3_PCT', '3-Point %', '%'),
                             'FT_PCT': ('FT_PCT', 'Free Throw %', '%')
                         }
                         
@@ -791,7 +662,6 @@ class LLMProcessor:
         return analysis
     
     def _generate_comparison_insights(self, query: str, data: Dict, parsing: QueryParsing) -> str:
-        """Generate key comparison insights"""
         insights = "---\n\n## Key Analysis Insights\n\n"
         
         if parsing.query_type == "compare_players" and 'player1_stats' in data and 'player2_stats' in data:

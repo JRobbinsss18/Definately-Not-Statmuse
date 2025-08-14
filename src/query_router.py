@@ -52,7 +52,7 @@ class QueryRouter:
             
             result['query_type'] = query_parsing.query_type
             result['parsed_query'] = query_parsing
-            result['original_query'] = user_query  # Store for PDF export
+            result['original_query'] = user_query
             
             return result
             
@@ -65,16 +65,10 @@ class QueryRouter:
             }
     
     def _handle_compare_players(self, parsing: QueryParsing, progress_callback=None) -> Dict[str, Any]:
-        # If no players parsed, try to extract from query manually
         if len(parsing.players) < 2:
-            # Try to extract player names from the original query
-            query_words = parsing.query_type.lower() if hasattr(parsing, 'original_query') else ""
-            
-            # Fallback: provide default comparison for testing
             if len(parsing.players) == 0:
                 parsing.players = ["LeBron James", "Stephen Curry"]
             elif len(parsing.players) == 1:
-                # Add a default second player for comparison
                 if "lebron" in parsing.players[0].lower():
                     parsing.players.append("Stephen Curry")
                 else:
@@ -92,7 +86,6 @@ class QueryRouter:
         if not player1_id or not player2_id:
             return self._create_error_result("Could not find one or both players")
         
-        # Get actual player names from NBA API for validation
         actual_player1_name = player1_name
         actual_player2_name = player2_name
         try:
@@ -116,20 +109,14 @@ class QueryRouter:
         if progress_callback:
             progress_callback("Creating visualizations", 4, 6)
         
-        # Create visualizations based on requested attributes
         visualizations = []
-        
-        # Determine which stats to compare
         if parsing.attributes:
-            # User specified particular stats - only show those
             requested_stats = parsing.attributes
             stats_for_radar = requested_stats
         else:
-            # General comparison - show all key stats
-            requested_stats = ['PTS', 'REB', 'AST', 'FG_PCT', 'STL', 'BLK']
-            stats_for_radar = ['PTS', 'REB', 'AST', 'FG_PCT', 'STL', 'BLK']
+            requested_stats = ['PTS', 'REB', 'AST', 'STL', 'BLK']
+            stats_for_radar = ['PTS', 'REB', 'AST', 'STL', 'BLK']
         
-        # Create radar chart with appropriate stats
         comparison_chart = self.visualizer.create_player_comparison_chart(
             player1_stats, player2_stats, actual_player1_name, actual_player2_name,
             stats_for_radar
@@ -139,7 +126,6 @@ class QueryRouter:
             'title': f"{actual_player1_name} vs {actual_player2_name} Statistical Radar"
         })
         
-        # Create season-aligned comparisons for requested stats only
         stat_display_names = {
             'PTS': 'Points', 'PPG': 'Points Per Game',
             'REB': 'Rebounds', 'RPG': 'Rebounds Per Game', 
@@ -251,7 +237,6 @@ class QueryRouter:
         career_stats = self.nba_client.get_player_career_stats(player_id)
         player_info = self.nba_client.get_player_info(player_id)
         
-        # Get specific season if requested
         season_stats = None
         if parsing.seasons:
             season_stats = self.nba_client.get_player_season_stats(player_id, parsing.seasons[0])
@@ -259,13 +244,11 @@ class QueryRouter:
         if progress_callback:
             progress_callback("Creating visualizations", 4, 6)
         
-        # Create visualizations based on the specific request
         visualizations = []
-        key_stats = ['PTS', 'REB', 'AST', 'FG_PCT']
-        stat_names = {'PTS': 'Points', 'REB': 'Rebounds', 'AST': 'Assists', 'FG_PCT': 'Field Goal %'}
+        key_stats = ['PTS', 'REB', 'AST']
+        stat_names = {'PTS': 'Points', 'REB': 'Rebounds', 'AST': 'Assists'}
         
         if parsing.time_context == 'career_peak':
-            # Focus on career highs - show peak performance highlighted
             for stat in key_stats:
                 if stat in career_stats.columns:
                     chart = self.visualizer.create_career_progression_chart(career_stats, actual_player_name, stat)
@@ -274,7 +257,6 @@ class QueryRouter:
                         'title': f"{actual_player_name} {stat_names[stat]} Career Progression (Career Highs)"
                     })
                     
-            # Add distribution to show peak vs average performance
             if 'PTS' in career_stats.columns:
                 distribution_chart = self.visualizer.create_stat_distribution_chart(career_stats, 'PTS', actual_player_name)
                 visualizations.append({
@@ -283,12 +265,10 @@ class QueryRouter:
                 })
         
         elif parsing.time_context == 'best_season':
-            # Focus on best season - identify and highlight the peak year for each stat
             best_season_data = {}
             
             for stat in key_stats:
                 if stat in career_stats.columns:
-                    # Find the best season for this stat
                     max_idx = career_stats[stat].idxmax()
                     best_value = career_stats[stat].iloc[max_idx]
                     best_year = career_stats['SEASON_ID'].iloc[max_idx] if 'SEASON_ID' in career_stats.columns else f"Season {max_idx + 1}"
@@ -307,7 +287,6 @@ class QueryRouter:
             
         
         else:
-            # General career analysis
             for stat in key_stats:
                 if stat in career_stats.columns:
                     chart = self.visualizer.create_career_progression_chart(career_stats, actual_player_name, stat)
@@ -316,7 +295,6 @@ class QueryRouter:
                         'title': f"{actual_player_name} {stat_names[stat]} Career Progression"
                     })
             
-            # Add distribution chart for points
             if 'PTS' in career_stats.columns:
                 distribution_chart = self.visualizer.create_stat_distribution_chart(career_stats, 'PTS', actual_player_name)
                 visualizations.append({
@@ -324,7 +302,6 @@ class QueryRouter:
                     'title': f"{actual_player_name} Points Distribution"
                 })
         
-        # Prepare return data
         return_data = {
             'career_stats': career_stats,
             'player_info': player_info,
@@ -332,11 +309,9 @@ class QueryRouter:
             'player_name': actual_player_name
         }
         
-        # Add context-specific data
         if parsing.time_context == 'best_season' and 'best_season_data' in locals():
             return_data['best_season_data'] = best_season_data
         elif parsing.time_context == 'career_peak':
-            # Add career peak data (highest values across career)
             career_peaks = {}
             for stat in key_stats:
                 if stat in career_stats.columns:
@@ -364,26 +339,20 @@ class QueryRouter:
         if progress_callback:
             progress_callback("Fetching team data", 3, 6)
         
-        # Get year-by-year stats which provides season summaries
         all_seasons = self.nba_client.get_team_year_by_year(team_id)
         
-        # Filter data based on time context and specific request
         if parsing.time_context == 'all_time':
-            # User wants all-time/franchise history stats
-            team_stats = all_seasons  # Return all seasons
+            team_stats = all_seasons
             season = "All Time"
         elif parsing.time_context == 'championship_years':
-            # Filter to championship years (look for NBA Finals appearances/wins)
             if 'NBA_FINALS_APPEARANCE' in all_seasons.columns:
                 championship_seasons = all_seasons[all_seasons['NBA_FINALS_APPEARANCE'].str.contains('CHAMPION', na=False)]
                 team_stats = championship_seasons if not championship_seasons.empty else all_seasons[all_seasons['NBA_FINALS_APPEARANCE'] == 'LEAGUE CHAMPION']
             else:
-                # Fallback: years with high win percentages (likely championship years)
                 top_seasons = all_seasons.nlargest(5, 'WIN_PCT') if 'WIN_PCT' in all_seasons.columns else all_seasons
                 team_stats = top_seasons
             season = "Championship Years"
         else:
-            # Specific season or default to current
             season = parsing.seasons[0] if parsing.seasons else self.nba_client.get_current_season()
             
             if not all_seasons.empty and 'YEAR' in all_seasons.columns:
@@ -462,7 +431,7 @@ class QueryRouter:
             target_stats = parsing.attributes
         else:
             # Default to key stats for general prediction
-            target_stats = ['PTS', 'REB', 'AST', 'FG_PCT']
+            target_stats = ['PTS', 'REB', 'AST']
             
         # Run predictions with appropriate time horizon
         if parsing.time_context.startswith('next_') and parsing.time_context != 'next_season':
@@ -530,17 +499,15 @@ class QueryRouter:
         return self._handle_analyze_player(parsing, progress_callback)
     
     def _extract_season_count(self, time_context: str) -> int:
-        """Extract number of seasons from time context string"""
         if 'next_' in time_context and '_seasons' in time_context:
             try:
-                # Extract number from string like 'next_3_seasons'
                 parts = time_context.split('_')
                 for part in parts:
                     if part.isdigit():
                         return int(part)
             except:
                 pass
-        return 1  # Default to 1 season
+        return 1
     
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
         return {
@@ -551,9 +518,6 @@ class QueryRouter:
         }
     
     def _create_disambiguation_result(self, disambiguation_options: Dict) -> Dict[str, Any]:
-        """
-        Create a special result for player disambiguation
-        """
         query = disambiguation_options['query']
         options = disambiguation_options['options']
         
@@ -572,12 +536,8 @@ class QueryRouter:
         }
     
     def _handle_explain_comparison(self, parsing: QueryParsing, progress_callback=None) -> Dict[str, Any]:
-        """Handle explanation queries that compare players (e.g., 'Explain why Curry is better than LeBron')"""
-        # Ensure we have two players for comparison
         if len(parsing.players) < 2:
             return self._create_error_result("Need two players to explain comparison")
-        
-        # Get comparison data first
         comparison_result = self._handle_compare_players(parsing, progress_callback)
         
         if 'error' in comparison_result:
@@ -590,9 +550,7 @@ class QueryRouter:
         return comparison_result
     
     def _handle_explain_analysis(self, parsing: QueryParsing, progress_callback=None) -> Dict[str, Any]:
-        """Handle general explanation queries (e.g., 'Explain Curry's shooting style')"""
         if parsing.players:
-            # Player explanation
             analysis_result = self._handle_analyze_player(parsing, progress_callback)
             if 'error' not in analysis_result:
                 analysis_result['query_type'] = 'explain_analysis'
@@ -609,7 +567,6 @@ class QueryRouter:
             return self._create_error_result("No specific player or team mentioned for explanation")
     
     def export_to_pdf(self, query_result: Dict[str, Any]) -> str:
-        """Export query result to PDF and return file path"""
         try:
             from src.pdf_exporter import NBAReportExporter
             exporter = NBAReportExporter()

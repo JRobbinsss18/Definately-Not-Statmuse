@@ -128,7 +128,6 @@ class NBAReportExporter:
         analysis = analysis.replace('---', '')
         
         # Convert markdown bold to reportlab bold
-        # This is a simple conversion - more sophisticated parsing could be added
         import re
         analysis = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', analysis)
         

@@ -42,8 +42,8 @@ class MLPredictor:
         # Create feature matrix
         feature_data = career_stats[available_features].copy()
         
-        # Fill missing values
-        feature_data = feature_data.fillna(feature_data.mean())
+        for col in feature_data.columns:
+            feature_data[col] = feature_data[col].fillna(feature_data[col].mean())
         
         # Add derived features
         if 'GP' in feature_data.columns and 'MIN' in feature_data.columns:
@@ -65,10 +65,16 @@ class MLPredictor:
         return feature_data, list(feature_data.columns)
     
     def train_models(self, X: pd.DataFrame, y: pd.Series, target_stat: str) -> Dict[str, float]:
-        if len(X) < 3:  # Need at least 3 seasons for training
+        if len(X) < 3:
             return {}
+        
+        if target_stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
+            valid_mask = (y >= 0.0) & (y <= 1.0) & (~y.isna())
+            if valid_mask.sum() < 3:
+                return {}
+            X = X[valid_mask]
+            y = y[valid_mask]
             
-        # Split data (use last season as test)
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.3, random_state=42, shuffle=False
         )
@@ -98,13 +104,12 @@ class MLPredictor:
                 model_scores[model_name] = {
                     'mae': mae,
                     'r2': r2,
-                    'score': r2 - (mae / (y_test.mean() + 1e-8))  # Combined score
+                    'score': r2 - (mae / (y_test.mean() + 1e-8))
                 }
                 
                 trained_models[model_name] = model
                 
-            except Exception as e:
-                print(f"[TRAINING] Error training {model_name}: {e}")
+            except Exception:
                 continue
         
         self.trained_models[target_stat] = trained_models
@@ -133,6 +138,17 @@ class MLPredictor:
             # Train models
             model_scores = self.train_models(feature_data, target_values, stat)
             if not model_scores:
+                prediction = self._simple_trend_prediction(target_values, stat)
+                predictions[stat] = {
+                    'prediction': prediction,
+                    'ensemble_mean': prediction,
+                    'confidence_interval': (prediction * 0.9, prediction * 1.1),
+                    'confidence_percentage': 60.0,
+                    'best_model': 'trend_fallback',
+                    'model_scores': {},
+                    'trend_direction': self._calculate_trend(target_values),
+                    'historical_avg': target_values.mean()
+                }
                 continue
             
             # Select best model
@@ -146,6 +162,8 @@ class MLPredictor:
             if stat in self.scalers:
                 next_season_scaled = self.scalers[stat].transform(next_season_features.values.reshape(1, -1))
                 prediction = best_model.predict(next_season_scaled)[0]
+                if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
+                    prediction = np.clip(prediction, 0.0, 1.0)
             else:
                 prediction = target_values.iloc[-1]  # Fallback to last season
             
@@ -155,6 +173,8 @@ class MLPredictor:
                 try:
                     next_season_scaled = self.scalers[stat].transform(next_season_features.values.reshape(1, -1))
                     pred = model.predict(next_season_scaled)[0]
+                    if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
+                        pred = np.clip(pred, 0.0, 1.0)
                     ensemble_predictions.append(pred)
                 except:
                     continue
@@ -192,7 +212,6 @@ class MLPredictor:
         return predictions
     
     def predict_multiple_seasons(self, career_stats: pd.DataFrame, target_stats: List[str], num_seasons: int = 3) -> Dict:
-        """Predict player performance over multiple future seasons"""
         if career_stats.empty or num_seasons < 1 or num_seasons > 10:
             return {}
             
@@ -223,9 +242,7 @@ class MLPredictor:
                     
                     # Create a safe copy for the loop
                     conf_tuple = tuple(base_confidence)
-                except (KeyError, TypeError) as e:
-                    print(f"[PREDICTION] Error accessing base prediction for {stat}: {e}")
-                    print(f"[DEBUG] Base prediction structure: {base_prediction[stat]}")
+                except (KeyError, TypeError):
                     continue
                 
                 # Calculate aging curve and trend
@@ -290,34 +307,67 @@ class MLPredictor:
     def _extrapolate_features(self, feature_data: pd.DataFrame) -> pd.Series:
         next_features = feature_data.iloc[-1].copy()
         
-        # Update career year
         if 'CAREER_YEAR' in next_features:
             next_features['CAREER_YEAR'] += 1
         if 'SEASON_NUMBER' in next_features:
             next_features['SEASON_NUMBER'] += 1
         
-        # Apply aging effects (simple linear trend extrapolation)
+        percentage_stats = ['FG_PCT', 'FG3_PCT', 'FT_PCT']
+        
         for col in feature_data.columns:
             if col not in ['CAREER_YEAR', 'SEASON_NUMBER'] and len(feature_data) >= 3:
                 recent_values = feature_data[col].tail(3).values
                 if len(recent_values) >= 2:
                     trend = np.polyfit(range(len(recent_values)), recent_values, 1)[0]
-                    next_features[col] = recent_values[-1] + trend
+                    projected_value = recent_values[-1] + trend
+                    if col in percentage_stats:
+                        projected_value = np.clip(projected_value, 0.0, 1.0)
+                    next_features[col] = projected_value
         
         return next_features
+    
+    def _simple_trend_prediction(self, values: pd.Series, stat: str) -> float:
+        if len(values) < 1:
+            return 0.0
+        if len(values) < 2:
+            return values.iloc[-1]
+        
+        recent_values = values.tail(3).values
+        if len(recent_values) >= 2 and not np.any(np.isnan(recent_values)):
+            try:
+                if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
+                    trend = np.polyfit(range(len(recent_values)), recent_values, 1)[0] * 0.5
+                else:
+                    trend = np.polyfit(range(len(recent_values)), recent_values, 1)[0]
+                
+                prediction = recent_values[-1] + trend
+                
+                if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
+                    prediction = np.clip(prediction, 0.25, 0.65)
+                elif prediction < 0:
+                    prediction = max(0, values.iloc[-1])
+                
+                return prediction
+            except:
+                pass
+        
+        return values.iloc[-1]
     
     def _calculate_trend(self, values: pd.Series) -> str:
         if len(values) < 2:
             return "insufficient_data"
-            
         recent_trend = np.polyfit(range(len(values.tail(3))), values.tail(3).values, 1)[0]
         
-        if recent_trend > 0.05:
-            return "improving"
-        elif recent_trend < -0.05:
-            return "declining"
+        if values.max() <= 1.0 and values.min() >= 0.0:
+            threshold = 0.01
         else:
-            return "stable"
+            threshold = 0.05
+        
+        if recent_trend > threshold:
+            return "improving"
+        elif recent_trend < -threshold:
+            return "declining"
+        return "stable"
     
     def get_prediction_summary(self, predictions: Dict[str, Dict]) -> str:
         if not predictions:

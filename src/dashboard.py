@@ -24,7 +24,6 @@ class NBASportsMuseDashboard:
     def run(self):
         self._setup_page_config()
         
-        # Check if we have results to show
         if st.session_state.results:
             self._display_results()
         elif st.session_state.is_processing:
@@ -90,15 +89,15 @@ class NBASportsMuseDashboard:
         """, unsafe_allow_html=True)
     
     def _display_main_interface(self):
-        # Center the content
+        # Center content
         col1, col2, col3 = st.columns([1, 2, 1])
         
         with col2:
             # Main title
-            st.markdown('<h1 class="main-title">NBA Sports Muse</h1>', unsafe_allow_html=True)
-            st.markdown('<p class="main-subtitle">Your AI-powered NBA analytics companion</p>', unsafe_allow_html=True)
+            st.markdown('<h1 class="main-title">Definately NOT SportsMuse</h1>', unsafe_allow_html=True)
+            st.markdown('<p class="main-subtitle">Real Data and AI Fully Integrated</p>', unsafe_allow_html=True)
             
-            # Main query interface
+            # Main query UI
             user_query = st.text_input(
                 "Ask your question",
                 placeholder="Ask about any NBA player or team...",
@@ -114,17 +113,17 @@ class NBASportsMuseDashboard:
                 else:
                     st.warning("Please enter a question!")
             
-            # Example queries in a more compact layout
+            # Example queries
             st.markdown('<div class="example-queries">', unsafe_allow_html=True)
             example_queries = [
                 "Compare Lebron to Curry",
                 "Analyze Klay Thompson",
                 "Predict Coby White's stats over the next 4 years",
-                "Analyze Coby White's Career",
+                "Bucks 2024 Season stats",
                 "Warriors All time stats"
             ]
             
-            # Display 5 queries in a nice layout: 3 on top row, 2 on bottom
+            # Sample displays
             col1, col2, col3 = st.columns(3)
             with col1:
                 if st.button(example_queries[0], key="example_0", use_container_width=True):
@@ -139,7 +138,7 @@ class NBASportsMuseDashboard:
                     self._add_to_history(example_queries[2])
                     self._process_query(example_queries[2])
             
-            # Second row with 2 centered buttons
+
             col4, col5, col6 = st.columns([1, 2, 1])
             with col5:
                 col_a, col_b = st.columns(2)
@@ -153,12 +152,12 @@ class NBASportsMuseDashboard:
                         self._process_query(example_queries[4])
             st.markdown('</div>', unsafe_allow_html=True)
             
-            # Query history - more compact
+            # Query history
             if 'query_history' in st.session_state and st.session_state.query_history:
                 st.markdown('<div class="history-section">', unsafe_allow_html=True)
                 st.markdown("**Recent Questions:**")
                 
-                recent_queries = list(reversed(st.session_state.query_history[-3:]))  # Show last 3
+                recent_queries = list(reversed(st.session_state.query_history[-3:]))
                 for i, prev_query in enumerate(recent_queries):
                     # Truncate long queries
                     display_query = prev_query if len(prev_query) <= 50 else prev_query[:47] + "..."
@@ -269,12 +268,10 @@ class NBASportsMuseDashboard:
     def _add_to_history(self, query: str):
         if query not in st.session_state.query_history:
             st.session_state.query_history.append(query)
-            # Keep only last 10 queries
             if len(st.session_state.query_history) > 10:
                 st.session_state.query_history.pop(0)
     
     def _process_query(self, query: str):
-        # Clear any previous disambiguation data
         self.query_router.nba_client.clear_disambiguation()
         
         st.session_state.current_query = query
@@ -283,7 +280,6 @@ class NBASportsMuseDashboard:
         st.rerun()
     
     def _reset_to_main(self):
-        # Clear any disambiguation data when resetting
         self.query_router.nba_client.clear_disambiguation()
         
         st.session_state.current_query = ""
@@ -291,7 +287,6 @@ class NBASportsMuseDashboard:
         st.session_state.results = None
     
     def _export_current_results_to_pdf(self):
-        """Export current query results to PDF"""
         try:
             results = st.session_state.results
             if not results:
@@ -303,8 +298,7 @@ class NBASportsMuseDashboard:
                 
             st.success(f"PDF report generated successfully!")
             st.info(f"Saved to: {pdf_path}")
-            
-            # Optional: Provide download link
+        
             try:
                 with open(pdf_path, "rb") as pdf_file:
                     pdf_data = pdf_file.read()
@@ -321,65 +315,21 @@ class NBASportsMuseDashboard:
             st.error(f"Failed to export PDF: {str(e)}")
     
     def _generate_chart_analysis(self, viz, results, chart_index):
-        """Generate analysis for individual charts"""
         if not viz.get('title'):
             return None
-            
         title = viz['title'].lower()
-        analysis = ""
         
         if 'radar' in title or 'comparison' in title:
-            analysis = "This radar chart compares overall statistical performance across key categories. " \
-                      "Larger areas indicate superior performance in that category."
-        
-        elif 'points by season' in title:
-            analysis = "This chart shows scoring progression throughout both players' careers, aligned by career year. " \
-                      "It reveals peak scoring periods and aging curves."
-        
-        elif 'rebounds by season' in title:
-            analysis = "Rebounding comparison by career season shows defensive impact and positioning evolution. " \
-                      "Consistent rebounders maintain steady numbers across seasons."
-        
-        elif 'assists by season' in title:
-            analysis = "Playmaking ability comparison reveals basketball IQ and role evolution. " \
-                      "Peak assist years often coincide with team leadership roles."
-        
-        elif 'field goal' in title and 'by season' in title:
-            analysis = "Shooting efficiency progression shows skill development and adaptation to league changes. " \
-                      "Declining percentages may indicate increased difficulty of shots or aging."
-        
-        elif 'steals by season' in title:
-            analysis = "Defensive activity comparison showing anticipation skills and defensive positioning. " \
-                      "Peak steal years often correlate with prime athletic years and defensive focus."
-        
-        elif 'blocks by season' in title:
-            analysis = "Shot blocking ability reveals rim protection and defensive impact evolution. " \
-                      "Centers and forwards typically show higher block numbers, indicating defensive versatility."
-        
+            return "*Radar chart compares overall statistical performance. Larger areas indicate superior performance.*"
         elif 'prediction' in title:
-            analysis = "Machine learning prediction based on historical patterns, career trajectory, and aging curves. " \
-                      "Confidence intervals show the expected range of performance."
-        
+            return "*ML prediction based on historical patterns and career trajectory.*"
         elif 'progression' in title:
-            if 'points' in title:
-                analysis = "Career scoring progression shows peak performance periods and consistency patterns."
-            elif 'rebounds' in title:
-                analysis = "Rebounding development reveals positional evolution and effort consistency over time."
-            elif 'assists' in title:
-                analysis = "Playmaking growth indicates basketball IQ development and leadership emergence."
-            elif 'field goal' in title:
-                analysis = "Shooting efficiency trends reveal skill refinement and adaptation to defensive schemes."
-        
+            return "*Career progression showing performance trends over time.*"
         elif 'distribution' in title:
-            analysis = "Statistical distribution shows consistency and variability in performance across seasons."
-        
-        elif 'performance' in title:
-            analysis = "Comprehensive team performance metrics including wins, scoring, and key statistical indicators."
-        
-        return f"*{analysis}*" if analysis else None
+            return "*Statistical distribution showing consistency and variability.*"
+        return None
     
     def _display_disambiguation(self, results):
-        """Display disambiguation options for user to choose from"""
         st.markdown("### Multiple Players Found")
         
         disambiguation_data = results['data']['disambiguation_options']
@@ -394,7 +344,6 @@ class NBASportsMuseDashboard:
         
         for i, (col, option) in enumerate(zip(cols, options)):
             with col:
-                # Create a clean card-like display
                 st.markdown(f"""
                 <div style="
                     border: 1px solid #ddd; 
@@ -412,9 +361,7 @@ class NBASportsMuseDashboard:
                 # Button to select this player
                 if st.button(f"Select {option['name']}", key=f"select_{option['id']}", use_container_width=True):
                     # Reprocess the query with the full player name
-                    # Replace the ambiguous part with the full selected name
                     original_query = st.session_state.current_query
-                    # For "Predict Marcus Smart" we want to replace the disambiguation trigger
                     if query in original_query:
                         new_query = original_query.replace(query, option['name'])
                     else:
@@ -429,7 +376,6 @@ class NBASportsMuseDashboard:
             self._reset_to_main()
     
     def _create_sample_chart(self):
-        # Sample chart for testing
         fig = go.Figure(data=go.Bar(x=['A', 'B', 'C'], y=[1, 3, 2]))
         fig.update_layout(title="Sample Chart")
         return fig
