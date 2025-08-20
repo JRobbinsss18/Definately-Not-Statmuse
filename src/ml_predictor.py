@@ -10,7 +10,6 @@ import lightgbm as lgb
 from typing import Dict, List, Tuple, Optional
 import warnings
 warnings.filterwarnings('ignore')
-
 class MLPredictor:
     def __init__(self):
         self.models = {
@@ -22,106 +21,76 @@ class MLPredictor:
         }
         self.scalers = {}
         self.trained_models = {}
-        
     def prepare_player_data(self, career_stats: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         if career_stats.empty:
             return pd.DataFrame(), []
-            
         feature_columns = [
             'GP', 'MIN', 'FGM', 'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT',
             'FTM', 'FTA', 'FT_PCT', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS'
         ]
-        
         available_features = [col for col in feature_columns if col in career_stats.columns]
-        
         if not available_features:
             return pd.DataFrame(), []
-            
         feature_data = career_stats[available_features].copy()
-        
         for col in feature_data.columns:
             feature_data[col] = feature_data[col].fillna(feature_data[col].mean())
-        
         if 'GP' in feature_data.columns and 'MIN' in feature_data.columns:
             feature_data['MIN_PER_GAME'] = feature_data['MIN'] / np.maximum(feature_data['GP'], 1)
-        
         if 'PTS' in feature_data.columns and 'GP' in feature_data.columns:
             feature_data['PPG'] = feature_data['PTS'] / np.maximum(feature_data['GP'], 1)
-        
         if 'REB' in feature_data.columns and 'GP' in feature_data.columns:
             feature_data['RPG'] = feature_data['REB'] / np.maximum(feature_data['GP'], 1)
-            
         if 'AST' in feature_data.columns and 'GP' in feature_data.columns:
             feature_data['APG'] = feature_data['AST'] / np.maximum(feature_data['GP'], 1)
-        
         feature_data['SEASON_NUMBER'] = range(len(feature_data))
         feature_data['CAREER_YEAR'] = feature_data['SEASON_NUMBER'] + 1
-        
         return feature_data, list(feature_data.columns)
-    
     def train_models(self, X: pd.DataFrame, y: pd.Series, target_stat: str) -> Dict[str, float]:
         if len(X) < 3:
             return {}
-        
         if target_stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
             valid_mask = (y >= 0.0) & (y <= 1.0) & (~y.isna())
             if valid_mask.sum() < 3:
                 return {}
             X = X[valid_mask]
             y = y[valid_mask]
-            
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.3, random_state=42, shuffle=False
         )
-        
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
-        
         self.scalers[target_stat] = scaler
-        
         model_scores = {}
         trained_models = {}
-        
         for model_name, model in self.models.items():
             try:
                 model.fit(X_train_scaled, y_train)
-                
                 y_pred = model.predict(X_test_scaled)
-                
                 mae = mean_absolute_error(y_test, y_pred)
                 r2 = r2_score(y_test, y_pred)
-                
                 model_scores[model_name] = {
                     'mae': mae,
                     'r2': r2,
                     'score': r2 - (mae / (y_test.mean() + 1e-8))
                 }
-                
                 trained_models[model_name] = model
-                
             except Exception:
                 continue
-        
         self.trained_models[target_stat] = trained_models
         return model_scores
-    
     def predict_next_season(self, player_data: pd.DataFrame, target_stats: List[str]) -> Dict[str, Dict]:
         predictions = {}
-        
         feature_data, feature_names = self.prepare_player_data(player_data)
         if feature_data.empty:
             return predictions
-        
         for stat in target_stats:
             if stat not in player_data.columns and stat not in feature_data.columns:
                 continue
-                
             if stat in feature_data.columns:
                 target_values = feature_data[stat].fillna(feature_data[stat].mean())
             else:
                 target_values = player_data[stat].fillna(player_data[stat].mean())
-            
             model_scores = self.train_models(feature_data, target_values, stat)
             if not model_scores:
                 prediction = self._simple_trend_prediction(target_values, stat)
@@ -136,12 +105,9 @@ class MLPredictor:
                     'historical_avg': target_values.mean()
                 }
                 continue
-            
             best_model_name = max(model_scores.keys(), key=lambda x: model_scores[x]['score'])
             best_model = self.trained_models[stat][best_model_name]
-            
             next_season_features = self._extrapolate_features(feature_data)
-            
             if stat in self.scalers:
                 next_season_scaled = self.scalers[stat].transform(next_season_features.values.reshape(1, -1))
                 prediction = best_model.predict(next_season_scaled)[0]
@@ -149,7 +115,6 @@ class MLPredictor:
                     prediction = np.clip(prediction, 0.0, 1.0)
             else:
                 prediction = target_values.iloc[-1]
-            
             ensemble_predictions = []
             for model_name, model in self.trained_models[stat].items():
                 try:
@@ -160,23 +125,19 @@ class MLPredictor:
                     ensemble_predictions.append(pred)
                 except:
                     continue
-            
             ensemble_mean = np.mean(ensemble_predictions) if ensemble_predictions else prediction
             ensemble_std = np.std(ensemble_predictions) if len(ensemble_predictions) > 1 else abs(prediction * 0.1)
-            
             if ensemble_predictions:
                 prediction_std = np.std(ensemble_predictions)
                 prediction_mean = np.mean(ensemble_predictions)
             else:
                 prediction_std = abs(prediction * 0.1)
                 prediction_mean = prediction
-            
             if prediction_mean != 0:
                 coefficient_of_variation = prediction_std / abs(prediction_mean)
                 confidence_percentage = max(60, min(95, 90 - (coefficient_of_variation * 100)))
             else:
                 confidence_percentage = 75
-            
             predictions[stat] = {
                 'prediction': prediction,
                 'ensemble_mean': ensemble_mean,
@@ -187,38 +148,28 @@ class MLPredictor:
                 'trend_direction': self._calculate_trend(target_values),
                 'historical_avg': target_values.mean()
             }
-        
         return predictions
-    
     def predict_multiple_seasons(self, career_stats: pd.DataFrame, target_stats: List[str], num_seasons: int = 3) -> Dict:
         if career_stats.empty or num_seasons < 1 or num_seasons > 10:
             return {}
-            
         predictions = {}
-        
         feature_data, feature_names = self.prepare_player_data(career_stats)
         if feature_data.empty:
             return {}
-        
         for stat in target_stats:
             if stat not in career_stats.columns and stat not in feature_data.columns:
                 continue
-                
             base_prediction = self.predict_next_season(career_stats, [stat])
-            
             if stat in base_prediction and isinstance(base_prediction[stat], dict):
                 try:
                     stat_predictions = []
                     base_value = base_prediction[stat]['ensemble_mean']
                     base_confidence = base_prediction[stat]['confidence_interval']
-                    
                     if not isinstance(base_confidence, (tuple, list)):
                         base_confidence = (base_value * 0.9, base_value * 1.1)
-                    
                     conf_tuple = tuple(base_confidence)
                 except (KeyError, TypeError):
                     continue
-                
                 recent_seasons = min(5, len(career_stats))
                 if recent_seasons >= 3:
                     if stat in feature_data.columns:
@@ -229,29 +180,23 @@ class MLPredictor:
                         recent_values_array = recent_values.values
                     else:
                         recent_values_array = np.array([recent_values]) if np.isscalar(recent_values) else recent_values
-                    
                     if len(recent_values_array) >= 3:
                         trend = np.polyfit(range(len(recent_values_array)), recent_values_array, 1)[0]
                     else:
                         trend = 0
                 else:
                     trend = 0
-                
                 for season_num in range(1, num_seasons + 1):
                     aging_factor = max(0.95, 1.0 - (season_num - 1) * 0.025)
                     trend_factor = trend * 0.5 * season_num
-                    
                     projected_value = (base_value + trend_factor) * aging_factor
-                    
                     confidence_width = (conf_tuple[1] - conf_tuple[0]) * (1 + season_num * 0.2)
                     confidence_interval = (
                         max(0, projected_value - confidence_width/2),
                         projected_value + confidence_width/2
                     )
-                    
                     base_confidence = base_prediction[stat].get('confidence_percentage', 75)
                     season_confidence = base_confidence * (0.9 ** (season_num - 1))
-                    
                     stat_predictions.append({
                         'season': season_num,
                         'projected_value': round(projected_value, 1),
@@ -260,26 +205,20 @@ class MLPredictor:
                         'aging_factor': round(aging_factor, 3),
                         'trend_influence': round(trend_factor, 1)
                     })
-                
                 predictions[stat] = {
                     'multi_season_projections': stat_predictions,
                     'base_prediction': base_prediction[stat],
                     'projection_type': f'{num_seasons}_season_outlook',
                     'trend_direction': 'improving' if trend > 0 else 'declining' if trend < -0.1 else 'stable'
                 }
-        
         return predictions
-    
     def _extrapolate_features(self, feature_data: pd.DataFrame) -> pd.Series:
         next_features = feature_data.iloc[-1].copy()
-        
         if 'CAREER_YEAR' in next_features:
             next_features['CAREER_YEAR'] += 1
         if 'SEASON_NUMBER' in next_features:
             next_features['SEASON_NUMBER'] += 1
-        
         percentage_stats = ['FG_PCT', 'FG3_PCT', 'FT_PCT']
-        
         for col in feature_data.columns:
             if col not in ['CAREER_YEAR', 'SEASON_NUMBER'] and len(feature_data) >= 3:
                 recent_values = feature_data[col].tail(3).values
@@ -289,15 +228,12 @@ class MLPredictor:
                     if col in percentage_stats:
                         projected_value = np.clip(projected_value, 0.0, 1.0)
                     next_features[col] = projected_value
-        
         return next_features
-    
     def _simple_trend_prediction(self, values: pd.Series, stat: str) -> float:
         if len(values) < 1:
             return 0.0
         if len(values) < 2:
             return values.iloc[-1]
-        
         recent_values = values.tail(3).values
         if len(recent_values) >= 2 and not np.any(np.isnan(recent_values)):
             try:
@@ -305,47 +241,36 @@ class MLPredictor:
                     trend = np.polyfit(range(len(recent_values)), recent_values, 1)[0] * 0.5
                 else:
                     trend = np.polyfit(range(len(recent_values)), recent_values, 1)[0]
-                
                 prediction = recent_values[-1] + trend
-                
                 if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
                     prediction = np.clip(prediction, 0.25, 0.65)
                 elif prediction < 0:
                     prediction = max(0, values.iloc[-1])
-                
                 return prediction
             except:
                 pass
-        
         return values.iloc[-1]
-    
     def _calculate_trend(self, values: pd.Series) -> str:
         if len(values) < 2:
             return "insufficient_data"
         recent_trend = np.polyfit(range(len(values.tail(3))), values.tail(3).values, 1)[0]
-        
         if values.max() <= 1.0 and values.min() >= 0.0:
             threshold = 0.01
         else:
             threshold = 0.05
-        
         if recent_trend > threshold:
             return "improving"
         elif recent_trend < -threshold:
             return "declining"
         return "stable"
-    
     def get_prediction_summary(self, predictions: Dict[str, Dict]) -> str:
         if not predictions:
             return "Unable to generate predictions due to insufficient data."
-        
         summary = "PREDICTION ANALYSIS:\n\n"
-        
         for stat, pred_data in predictions.items():
             if 'multi_season_projections' in pred_data:
                 projections = pred_data['multi_season_projections']
                 trend = pred_data.get('trend_direction', 'stable')
-                
                 summary += f"{stat} Multi-Season Projection (trend: {trend}):\n"
                 for proj in projections:
                     season = proj['season']
@@ -358,9 +283,7 @@ class MLPredictor:
                 trend = pred_data.get('trend_direction', 'stable')
                 confidence_pct = pred_data.get('confidence_percentage', 75)
                 best_model = pred_data.get('best_model', 'ensemble')
-                
                 summary += f"{stat}: {prediction:.1f} (trend: {trend})\n"
                 summary += f"  Confidence: {confidence_pct}%\n"
                 summary += f"  Best model: {best_model}\n\n"
-        
         return summary
