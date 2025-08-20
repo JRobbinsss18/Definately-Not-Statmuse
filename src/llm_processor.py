@@ -6,12 +6,12 @@ from dataclasses import dataclass
 
 @dataclass
 class QueryParsing:
-    query_type: str  # compare_players, compare_teams, analyze_player, analyze_team, predict_player, predict_team
+    query_type: str
     players: List[str]
     teams: List[str]
     seasons: List[str]
     attributes: List[str]
-    time_context: str  # career, season, specific_year
+    time_context: str
     
 class LLMProcessor:
     def __init__(self, model_name: str = "llama3.2:1b"):
@@ -38,7 +38,6 @@ class LLMProcessor:
             ])
             
             content = response['message']['content'].strip()
-            # Clean up response to extract JSON
             json_match = re.search(r'\{.*\}', content, re.DOTALL)
             if json_match:
                 json_str = json_match.group()
@@ -58,9 +57,7 @@ class LLMProcessor:
     def _fallback_parse(self, query: str) -> QueryParsing:
         query_lower = query.lower()
         
-        # Determine query type
         if any(phrase in query_lower for phrase in ['explain why', 'why is', 'why', 'because', 'reason']):
-            # Check if it's a comparison explanation
             if any(word in query_lower for word in ['better', 'worse', 'vs', 'than', 'compared to']):
                 query_type = 'explain_comparison'
             else:
@@ -274,17 +271,14 @@ class LLMProcessor:
                         for stat, divisor_stat, category, unit in stat_comparisons:
                             if stat in p1_latest and stat in p2_latest:
                                 if divisor_stat and divisor_stat in p1_latest and divisor_stat in p2_latest:
-                                    # Calculate per-game stats
                                     p1_val = p1_latest[stat] / max(p1_latest[divisor_stat], 1)
                                     p2_val = p2_latest[stat] / max(p2_latest[divisor_stat], 1)
                                     format_str = "{:.1f}"
                                 elif unit == '%':
-                                    # Percentage stats
                                     p1_val = p1_latest[stat] * 100
                                     p2_val = p2_latest[stat] * 100
                                     format_str = "{:.1f}%"
                                 else:
-                                    # Season totals
                                     p1_val = p1_latest[stat]
                                     p2_val = p2_latest[stat]
                                     format_str = "{:.1f}"
@@ -380,25 +374,20 @@ class LLMProcessor:
                 p2_name = data['player2_name']
                 analysis += f"**Answer: Comprehensive comparison between {p1_name} and {p2_name}**\n\n"
                 
-                # Try to get actual stats for comparison
                 if 'player1_stats' in data and 'player2_stats' in data:
                     p1_stats = data['player1_stats']
                     p2_stats = data['player2_stats']
                     
                     if not p1_stats.empty and not p2_stats.empty:
-                        # Get latest season stats
                         p1_latest = p1_stats.iloc[-1]
                         p2_latest = p2_stats.iloc[-1]
                         
                         analysis += f"**Key Statistical Comparison (Per Game):**\n"
                         
-                        # Determine which stats to include in analysis
                         if parsing.attributes:
-                            # User specified particular stats - only show those
                             stats_to_show = parsing.attributes
                         else:
-                            # General comparison - show all key stats
-                            stats_to_show = ['PPG', 'RPG', 'APG']  # Default to per-game stats
+                            stats_to_show = ['PPG', 'RPG', 'APG']
                         
                         stat_mappings = {
                             'PTS': ('PTS', 'Points', 'PPG'), 'PPG': ('PTS', 'Points', 'PPG'),
@@ -415,23 +404,19 @@ class LLMProcessor:
                                 
                                 if raw_stat in p1_latest and raw_stat in p2_latest:
                                     if unit_type == '%':
-                                        # Percentage stats - show as percentages
                                         p1_val = p1_latest[raw_stat] * 100 if p1_latest[raw_stat] <= 1 else p1_latest[raw_stat]
                                         p2_val = p2_latest[raw_stat] * 100 if p2_latest[raw_stat] <= 1 else p2_latest[raw_stat]
                                         analysis += f"- {display_name}: {p1_name} ({p1_val:.1f}%) vs {p2_name} ({p2_val:.1f}%)\n"
                                     elif unit_type in ['PPG', 'RPG', 'APG', 'SPG', 'BPG'] and 'GP' in p1_latest and 'GP' in p2_latest:
-                                        # Per-game stats - calculate per game
                                         p1_val = p1_latest[raw_stat] / max(p1_latest['GP'], 1)
                                         p2_val = p2_latest[raw_stat] / max(p2_latest['GP'], 1)
                                         analysis += f"- {display_name}: {p1_name} ({p1_val:.1f} {unit_type}) vs {p2_name} ({p2_val:.1f} {unit_type})\n"
                                     else:
-                                        # Total stats
                                         analysis += f"- {display_name}: {p1_name} ({p1_latest[raw_stat]:.1f}) vs {p2_name} ({p2_latest[raw_stat]:.1f})\n"
                         
                         analysis += "\n"
                 
                 if parsing.attributes:
-                    # Specific stat comparison
                     if len(parsing.attributes) == 1:
                         stat_name = parsing.attributes[0].lower().replace('_', ' ')
                         analysis += f"The charts focus specifically on {stat_name} comparison, showing both current performance and career progression. "
@@ -439,7 +424,6 @@ class LLMProcessor:
                         stat_names = [attr.lower().replace('_', ' ') for attr in parsing.attributes]
                         analysis += f"The charts focus on {', '.join(stat_names)} comparison, showing both current performance and career progression. "
                 else:
-                    # General comparison
                     analysis += f"The radar chart shows overall performance comparison across multiple categories. "
                     analysis += f"The season-by-season charts reveal how {p1_name} and {p2_name} performed at similar career stages. "
                 
@@ -450,7 +434,6 @@ class LLMProcessor:
                 player_name = parsing.players[0]
                 analysis += f"**Answer: {player_name} Performance Predictions for Next Season**\n\n"
                 
-                # Try to get prediction data
                 if 'predictions' in data:
                     predictions = data['predictions']
                     analysis += "**Predicted Performance:**\n"
@@ -476,7 +459,6 @@ class LLMProcessor:
             if parsing.players:
                 player_name = parsing.players[0]
                 
-                # Generate context-aware analysis title
                 if parsing.time_context == 'career_peak':
                     analysis += f"**Answer: {player_name} Career Highs and Peak Performance**\n\n"
                 elif parsing.time_context == 'best_season':
@@ -484,9 +466,7 @@ class LLMProcessor:
                 else:
                     analysis += f"**Answer: Comprehensive Career Analysis of {player_name}**\n\n"
                 
-                # Generate context-specific analysis based on request
                 if parsing.time_context == 'career_peak' and 'career_peaks' in data:
-                    # Handle career highs specifically
                     career_peaks = data['career_peaks']
                     analysis += f"**Career Highs and Peak Performance:**\n"
                     
@@ -506,7 +486,6 @@ class LLMProcessor:
                     analysis += f"\nThese represent {player_name}'s absolute peak performance in each statistical category across their entire career.\n\n"
                 
                 elif parsing.time_context == 'best_season' and 'best_season_data' in data:
-                    # Handle best season specifically 
                     best_season_data = data['best_season_data']
                     analysis += f"**Best Season Analysis:**\n"
                     
@@ -526,7 +505,6 @@ class LLMProcessor:
                     analysis += f"\nThe charts highlight {player_name}'s peak seasons for each statistical category, showing when they performed at their absolute best.\n\n"
                 
                 else:
-                    # General career overview
                     if 'career_stats' in data:
                         career_stats = data['career_stats']
                         if not career_stats.empty:
@@ -554,7 +532,6 @@ class LLMProcessor:
                 team_name = parsing.teams[0]
                 season = data.get('season', 'current season')
                 
-                # Generate context-aware analysis title
                 if parsing.time_context == 'all_time':
                     analysis += f"**Answer: {team_name} All-Time Franchise Statistics and History**\n\n"
                 elif parsing.time_context == 'championship_years':
@@ -562,12 +539,10 @@ class LLMProcessor:
                 else:
                     analysis += f"**Answer: {team_name} Performance Analysis for {season}**\n\n"
                 
-                # Try to get team data
                 if 'team_stats' in data:
                     team_stats = data['team_stats']
                     if not team_stats.empty:
                         if parsing.time_context == 'all_time':
-                            # Handle all-time franchise statistics (multiple seasons)
                             analysis += f"**All-Time Franchise Overview:**\n"
                             total_seasons = len(team_stats)
                             analysis += f"- Franchise Seasons: {total_seasons}\n"
@@ -593,7 +568,6 @@ class LLMProcessor:
                                     analysis += f"- Finals Appearances: {finals_appearances}\n"
                         
                         elif parsing.time_context == 'championship_years':
-                            # Handle championship years specifically
                             analysis += f"**Championship History:**\n"
                             if len(team_stats) > 0:
                                 analysis += f"- Championship Seasons: {len(team_stats)}\n"
@@ -606,16 +580,13 @@ class LLMProcessor:
                                 analysis += f"- No championship years found in available data\n"
                         
                         else:
-                            # Handle single season data (1 row with totals)
                             analysis += f"**Season Overview:**\n"
                             team_row = team_stats.iloc[0]
                             
-                            # Games played
                             if 'GP' in team_stats.columns:
                                 games_played = team_row['GP']
                                 analysis += f"- Games Played: {games_played}\n"
                             
-                            # Win-Loss record
                             if 'WINS' in team_stats.columns and 'LOSSES' in team_stats.columns:
                                 wins = team_row['WINS']
                                 losses = team_row['LOSSES']
@@ -625,13 +596,11 @@ class LLMProcessor:
                                     win_pct = wins / (wins + losses) * 100 if (wins + losses) > 0 else 0
                                 analysis += f"- Record: {wins}-{losses} ({win_pct:.1f}% win rate)\n"
                             elif 'WL' in team_stats.columns:
-                                # Fallback for game-by-game data
                                 wins = len(team_stats[team_stats['WL'] == 'W'])
                                 losses = len(team_stats[team_stats['WL'] == 'L'])
                                 win_pct = wins / (wins + losses) * 100 if (wins + losses) > 0 else 0
                                 analysis += f"- Record: {wins}-{losses} ({win_pct:.1f}% win rate)\n"
                             
-                            # Scoring performance
                             if 'PTS' in team_stats.columns and 'GP' in team_stats.columns:
                                 total_pts = team_row['PTS']
                                 games_played = team_row['GP']
@@ -639,11 +608,9 @@ class LLMProcessor:
                                 analysis += f"- Average Points Per Game: {avg_ppg:.1f}\n"
                                 analysis += f"- Total Points: {total_pts}\n"
                             elif 'PTS' in team_stats.columns:
-                                # Fallback for game-by-game data
                                 avg_pts = team_stats['PTS'].mean()
                                 analysis += f"- Average Points Per Game: {avg_pts:.1f}\n"
                             
-                            # Additional key stats
                             if 'FG_PCT' in team_stats.columns:
                                 fg_pct = team_row['FG_PCT'] * 100
                                 analysis += f"- Field Goal Percentage: {fg_pct:.1f}%\n"
@@ -656,7 +623,6 @@ class LLMProcessor:
                 
                 analysis += f"The performance charts show {team_name}'s win-loss record, scoring trends, and key metrics throughout the season.\n\n"
         
-        # Add LLM-style comparison insights at the bottom
         analysis += self._generate_comparison_insights(query, data, parsing)
         
         return analysis
@@ -673,26 +639,20 @@ class LLMProcessor:
             if not p1_stats.empty and not p2_stats.empty:
                 insights += "**Main Comparison Factors:**\n\n"
                 
-                # Compare career longevity
                 p1_seasons = len(p1_stats)
                 p2_seasons = len(p2_stats)
                 if p1_seasons != p2_seasons:
                     longer_career = p1_name if p1_seasons > p2_seasons else p2_name
                     insights += f"• **Career Longevity**: {longer_career} has played {max(p1_seasons, p2_seasons)} seasons vs {min(p1_seasons, p2_seasons)}\n"
                 
-                # Compare latest performance - focus on requested stats
                 p1_latest = p1_stats.iloc[-1]
                 p2_latest = p2_stats.iloc[-1]
                 
-                # Determine which stats to include in insights
                 if parsing.attributes:
-                    # Only show insights for requested stats
                     stats_for_insights = parsing.attributes
                 else:
-                    # General comparison - show all key stats
                     stats_for_insights = ['PPG', 'RPG', 'APG']
                 
-                # Map stats to insight generation
                 insight_mappings = {
                     'PTS': ('PTS', 'Scoring', 'total points', False),
                     'PPG': ('PTS', 'Scoring', 'points per game', True),
@@ -711,20 +671,17 @@ class LLMProcessor:
                         
                         if raw_stat in p1_latest and raw_stat in p2_latest:
                             if is_per_game and 'GP' in p1_latest and 'GP' in p2_latest:
-                                # Calculate per-game values
                                 p1_val = p1_latest[raw_stat] / max(p1_latest['GP'], 1)
                                 p2_val = p2_latest[raw_stat] / max(p2_latest['GP'], 1)
                                 leader = p1_name if p1_val > p2_val else p2_name
                                 diff = abs(p1_val - p2_val)
                                 insights += f"• **{category}**: {leader} leads in recent {description} ({p1_val:.1f} vs {p2_val:.1f})\n"
                             elif raw_stat == 'FG_PCT':
-                                # Percentage comparison
                                 p1_pct = p1_latest[raw_stat] * 100 if p1_latest[raw_stat] <= 1 else p1_latest[raw_stat]
                                 p2_pct = p2_latest[raw_stat] * 100 if p2_latest[raw_stat] <= 1 else p2_latest[raw_stat]
                                 leader = p1_name if p1_pct > p2_pct else p2_name
                                 insights += f"• **{category}**: {leader} has better {description} ({p1_pct:.1f}% vs {p2_pct:.1f}%)\n"
                             else:
-                                # Total values comparison
                                 leader = p1_name if p1_latest[raw_stat] > p2_latest[raw_stat] else p2_name
                                 insights += f"• **{category}**: {leader} leads in {description}\n"
                 

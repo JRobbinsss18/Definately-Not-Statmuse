@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 import subprocess
 import sys
@@ -37,7 +36,7 @@ def main():
     print("NBA Sports Muse Setup")
     print("=" * 40)
     
-    # Install Python requirements
+    
     try:
         install_requirements()
         print("[SUCCESS] Python requirements installed successfully")
@@ -45,7 +44,7 @@ def main():
         print(f"[ERROR] Failed to install requirements: {e}")
         return False
     
-    # Check Ollama
+    
     if not check_ollama():
         print("\n[INSTRUCTIONS] Ollama Setup Required:")
         print("1. Install Ollama from: https://ollama.ai/")
@@ -53,7 +52,7 @@ def main():
         print("3. Run this setup script again")
         return False
     
-    # Setup Ollama model
+    
     if not setup_ollama_model():
         print("[WARNING] Please manually run: ollama pull llama2")
         return False

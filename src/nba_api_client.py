@@ -23,9 +23,8 @@ class NBAAPIClient:
         return self._reverse_search_player(player_name)
     
     def _reverse_search_player(self, player_name: str) -> Optional[int]:
-        # First try perfect exact match using NBA API (for cases like "LeBron James")
         player_dict = players.find_players_by_full_name(player_name)
-        if player_dict and len(player_dict) == 1:  # Only if exactly one perfect match
+        if player_dict and len(player_dict) == 1:
             return player_dict[0]['id']
         
         all_players = players.get_players()
@@ -35,7 +34,6 @@ class NBAAPIClient:
         if not name_parts:
             return None
             
-        # Extract last name - this MUST match perfectly
         last_name = name_parts[-1]
         
         last_name_candidates = []
@@ -66,9 +64,9 @@ class NBAAPIClient:
             player_first = player_parts[0]
             
             if search_first == player_first:
-                confidence += 40.0  # Perfect first name match
+                confidence += 40.0
             elif search_first in player_first or player_first in search_first:
-                confidence += 20.0  # Partial first name match
+                confidence += 20.0
         
         if len(search_name_parts) > 2 and len(player_parts) > 2:
             search_middle = search_name_parts[1:-1]
@@ -79,16 +77,15 @@ class NBAAPIClient:
                     if s_mid == p_mid:
                         confidence += 10.0
         
-        # Career activity bonus - prioritize players who are more likely to be actively discussed
         player_id = player['id']
         
-        if player_id > 1000000:  # Recent draft classes (2017+)
+        if player_id > 1000000:
             activity_bonus = 5.0
-        elif player_id > 200000:  # Modern era players (2000s+)  
-            activity_bonus = 8.0  # Sweet spot for current stars
-        elif player_id > 100000:  # 1990s-2000s players
+        elif player_id > 200000:
+            activity_bonus = 8.0
+        elif player_id > 100000:
             activity_bonus = 3.0
-        else:  # Historical players
+        else:
             activity_bonus = 1.0
         
         confidence += activity_bonus
@@ -99,32 +96,26 @@ class NBAAPIClient:
         if not scored_candidates:
             return None
             
-        # If only one candidate, return it
         if len(scored_candidates) == 1:
             return scored_candidates[0][0]['id']
         
-        # Get the top candidates
         best_confidence = scored_candidates[0][1]
         high_confidence_candidates = []
         
-        # Consider candidates within 5 points of the best as "high confidence"
         for player, confidence in scored_candidates:
             if confidence >= best_confidence - 5.0:
                 high_confidence_candidates.append((player, confidence))
             else:
-                break  # List is sorted, so we can break here
+                break
         
-        # If there's a clear winner (>10 point gap to second place), return it
         if len(high_confidence_candidates) == 1 or \
            (len(high_confidence_candidates) >= 2 and 
             high_confidence_candidates[0][1] - high_confidence_candidates[1][1] > 10.0):
             return high_confidence_candidates[0][0]['id']
         
-        # Multiple high-confidence matches - need user disambiguation
         return self._request_user_disambiguation(high_confidence_candidates, original_query)
     
     def _request_user_disambiguation(self, candidates: list, original_query: str) -> Optional[int]:
-        # Store disambiguation data for the error handler to use
         self._disambiguation_candidates = candidates
         self._disambiguation_query = original_query
         return None
@@ -155,7 +146,6 @@ class NBAAPIClient:
         if team_dict:
             return team_dict[0]['id']
         
-        # Try partial match
         all_teams = teams.get_teams()
         for team in all_teams:
             if team_name.lower() in team['full_name'].lower() or team_name.lower() in team['nickname'].lower():
@@ -163,9 +153,9 @@ class NBAAPIClient:
         return None
     
     def resolve_player_name(self, query_name: str) -> str:
-        # First try nickname mappings (only for clear nicknames, not ambiguous names)
         nickname_mappings = {
             'lebron': 'LeBron James',
+            'bronny': 'Bronny James',
             'curry': 'Stephen Curry',
             'steph': 'Stephen Curry', 
             'kd': 'Kevin Durant',

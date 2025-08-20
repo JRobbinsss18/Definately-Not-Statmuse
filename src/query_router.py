@@ -18,13 +18,11 @@ class QueryRouter:
             if progress_callback:
                 progress_callback("Parsing query with LLM", 1, 6)
             
-            # Parse query
             query_parsing = self.llm_processor.parse_query(user_query)
             
             if progress_callback:
                 progress_callback("Fetching NBA data", 2, 6)
             
-            # Route to appropriate handler
             if query_parsing.query_type == "compare_players":
                 result = self._handle_compare_players(query_parsing, progress_callback)
             elif query_parsing.query_type == "compare_teams":
@@ -45,7 +43,6 @@ class QueryRouter:
             if progress_callback:
                 progress_callback("Generating final analysis", 6, 6)
             
-            # Generate comprehensive response
             result['analysis'] = self.llm_processor.generate_analysis_response(
                 user_query, result.get('data', {}), query_parsing
             )
@@ -102,7 +99,6 @@ class QueryRouter:
         if progress_callback:
             progress_callback("Fetching player statistics", 3, 6)
         
-        # Get career stats
         player1_stats = self.nba_client.get_player_career_stats(player1_id)
         player2_stats = self.nba_client.get_player_career_stats(player2_id)
         
@@ -114,8 +110,8 @@ class QueryRouter:
             requested_stats = parsing.attributes
             stats_for_radar = requested_stats
         else:
-            requested_stats = ['PTS', 'REB', 'AST', 'STL', 'BLK']
-            stats_for_radar = ['PTS', 'REB', 'AST', 'STL', 'BLK']
+            requested_stats = ['PPG', 'RPG', 'APG', 'STL', 'BLK']
+            stats_for_radar = ['PPG', 'RPG', 'APG', 'STL', 'BLK']
         
         comparison_chart = self.visualizer.create_player_comparison_chart(
             player1_stats, player2_stats, actual_player1_name, actual_player2_name,
@@ -136,8 +132,6 @@ class QueryRouter:
         }
         
         for stat in requested_stats:
-            # Map per-game stats to season totals for visualization
-            # (since historical data uses season totals)
             viz_stat = stat
             if stat == 'PPG':
                 viz_stat = 'PTS'
@@ -213,13 +207,11 @@ class QueryRouter:
         player_id = self.nba_client.get_player_id(player_name)
         
         if not player_id:
-            # Check if we need disambiguation
             disambiguation_options = self.nba_client.get_disambiguation_options()
             if disambiguation_options:
                 return self._create_disambiguation_result(disambiguation_options)
             return self._create_error_result(f"Could not find player: {player_name}")
         
-        # Get actual player name from NBA API for validation
         actual_player_name = player_name
         try:
             from nba_api.stats.static import players as nba_players
@@ -245,8 +237,8 @@ class QueryRouter:
             progress_callback("Creating visualizations", 4, 6)
         
         visualizations = []
-        key_stats = ['PTS', 'REB', 'AST']
-        stat_names = {'PTS': 'Points', 'REB': 'Rebounds', 'AST': 'Assists'}
+        key_stats = ['PPG', 'RPG', 'APG']
+        stat_names = {'PPG': 'Points Per Game', 'RPG': 'Rebounds Per Game', 'APG': 'Assists Per Game'}
         
         if parsing.time_context == 'career_peak':
             for stat in key_stats:
@@ -359,21 +351,20 @@ class QueryRouter:
                 team_stats = all_seasons[all_seasons['YEAR'] == season]
                 
                 if team_stats.empty:
-                    # Try to match partial season formats
                     season_variants = [
                         season,
-                        season.split('-')[0] if '-' in season else season,  # "2020-21" -> "2020"
-                        f"{season}-{str(int(season)+1)[2:]}" if season.isdigit() else season  # "2020" -> "2020-21"
+                        season.split('-')[0] if '-' in season else season,
+                        f"{season}-{str(int(season)+1)[2:]}" if season.isdigit() else season
                     ]
                     
                     for variant in season_variants:
-                        if variant != season:  # Avoid duplicate check
+                        if variant != season:
                             team_stats = all_seasons[all_seasons['YEAR'] == variant]
                             if not team_stats.empty:
-                                season = variant  # Update season to the found variant
+                                season = variant
                                 break
             else:
-                team_stats = pd.DataFrame()  # Empty fallback
+                team_stats = pd.DataFrame()
         
         if progress_callback:
             progress_callback("Creating visualizations", 4, 6)
@@ -399,13 +390,11 @@ class QueryRouter:
         player_id = self.nba_client.get_player_id(player_name)
         
         if not player_id:
-            # Check if we need disambiguation
             disambiguation_options = self.nba_client.get_disambiguation_options()
             if disambiguation_options:
                 return self._create_disambiguation_result(disambiguation_options)
             return self._create_error_result(f"Could not find player: {player_name}")
         
-        # Get actual player name from NBA API for validation
         actual_player_name = player_name
         try:
             from nba_api.stats.static import players as nba_players
@@ -425,52 +414,50 @@ class QueryRouter:
         if progress_callback:
             progress_callback("Running ML predictions", 4, 6)
         
-        # Determine target stats based on user query
         if parsing.attributes:
-            # User specified specific stats
-            target_stats = parsing.attributes
+            target_stats = []
+            for stat in parsing.attributes:
+                if stat == 'PTS':
+                    target_stats.append('PPG')
+                elif stat == 'REB':
+                    target_stats.append('RPG')
+                elif stat == 'AST':
+                    target_stats.append('APG')
+                else:
+                    target_stats.append(stat)
         else:
-            # Default to key stats for general prediction
-            target_stats = ['PTS', 'REB', 'AST']
+            target_stats = ['PPG', 'RPG', 'APG']
             
-        # Run predictions with appropriate time horizon
         if parsing.time_context.startswith('next_') and parsing.time_context != 'next_season':
-            # Multi-season predictions
             num_seasons = self._extract_season_count(parsing.time_context)
             predictions = self.ml_predictor.predict_multiple_seasons(career_stats, target_stats, num_seasons)
         else:
-            # Single season prediction
             predictions = self.ml_predictor.predict_next_season(career_stats, target_stats)
         
         if progress_callback:
             progress_callback("Creating prediction charts", 5, 6)
         
-        # Create targeted prediction visualizations
         visualizations = []
         stat_names = {
-            'PTS': 'Points', 'PPG': 'PPG',
-            'REB': 'Rebounds', 'RPG': 'RPG', 
-            'AST': 'Assists', 'APG': 'APG',
+            'PTS': 'Points', 'PPG': 'Points Per Game',
+            'REB': 'Rebounds', 'RPG': 'Rebounds Per Game', 
+            'AST': 'Assists', 'APG': 'Assists Per Game',
             'FG_PCT': 'Field Goal %', 'STL': 'Steals', 'BLK': 'Blocks',
             'FG3_PCT': '3-Point %', 'FT_PCT': 'Free Throw %', 
             'TOV': 'Turnovers', 'MIN': 'Minutes'
         }
         
-        # Create specific visualization based on query context
         for stat in predictions.keys():
             stat_display = stat_names.get(stat, stat)
             pred_data = predictions[stat]
             
-            # Determine chart type based on time context
             if parsing.time_context.startswith('next_') and parsing.time_context != 'next_season':
-                # Multi-season prediction chart
                 pred_chart = self.visualizer.create_multi_season_prediction_chart(
                     career_stats, predictions, actual_player_name, stat, 
                     self._extract_season_count(parsing.time_context)
                 )
                 title = f"{actual_player_name} {stat_display} - {parsing.time_context.replace('_', ' ').title()} Projection"
             else:
-                # Single season prediction
                 pred_chart = self.visualizer.create_prediction_chart(
                     career_stats, predictions, actual_player_name, stat
                 )
@@ -495,7 +482,6 @@ class QueryRouter:
         }
     
     def _handle_general_analysis(self, parsing: QueryParsing, progress_callback=None) -> Dict[str, Any]:
-        # Fallback for queries that don't fit other categories
         return self._handle_analyze_player(parsing, progress_callback)
     
     def _extract_season_count(self, time_context: str) -> int:
@@ -543,7 +529,6 @@ class QueryRouter:
         if 'error' in comparison_result:
             return comparison_result
         
-        # Enhance the result with explanation-focused analysis
         comparison_result['query_type'] = 'explain_comparison'
         comparison_result['explanation_type'] = 'player_comparison'
         
@@ -557,7 +542,6 @@ class QueryRouter:
                 analysis_result['explanation_type'] = 'player_analysis'
             return analysis_result
         elif parsing.teams:
-            # Team explanation
             analysis_result = self._handle_analyze_team(parsing, progress_callback)
             if 'error' not in analysis_result:
                 analysis_result['query_type'] = 'explain_analysis'

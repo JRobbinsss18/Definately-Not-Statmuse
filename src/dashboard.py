@@ -45,20 +45,20 @@ class NBASportsMuseDashboard:
             font-size: 3rem;
             font-weight: 600;
             margin-bottom: 1rem;
-            color: #1f2937;
+            color:
         }
         
         .main-subtitle {
             text-align: center;
             font-size: 1.2rem;
-            color: #6b7280;
+            color:
             margin-bottom: 3rem;
         }
         
         .query-input {
             font-size: 1.1rem !important;
             border-radius: 8px !important;
-            border: 1px solid #d1d5db !important;
+            border: 1px solid
             padding: 12px !important;
             margin-bottom: 1rem !important;
         }
@@ -72,32 +72,29 @@ class NBASportsMuseDashboard:
         }
         
         .example-btn {
-            background: #f3f4f6 !important;
-            border: 1px solid #d1d5db !important;
+            background:
+            border: 1px solid
             border-radius: 8px !important;
             padding: 8px 16px !important;
             font-size: 0.9rem !important;
-            color: #374151 !important;
+            color:
         }
         
         .history-section {
             margin-top: 2rem;
             padding-top: 1rem;
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid
         }
         </style>
         """, unsafe_allow_html=True)
     
     def _display_main_interface(self):
-        # Center content
         col1, col2, col3 = st.columns([1, 2, 1])
         
         with col2:
-            # Main title
             st.markdown('<h1 class="main-title">Definately NOT SportsMuse</h1>', unsafe_allow_html=True)
             st.markdown('<p class="main-subtitle">Real Data and AI Fully Integrated</p>', unsafe_allow_html=True)
             
-            # Main query UI
             user_query = st.text_input(
                 "Ask your question",
                 placeholder="Ask about any NBA player or team...",
@@ -105,7 +102,6 @@ class NBASportsMuseDashboard:
                 label_visibility="collapsed"
             )
             
-            # Submit button
             if st.button("Ask", type="primary", use_container_width=True):
                 if user_query.strip():
                     self._add_to_history(user_query)
@@ -113,7 +109,6 @@ class NBASportsMuseDashboard:
                 else:
                     st.warning("Please enter a question!")
             
-            # Example queries
             st.markdown('<div class="example-queries">', unsafe_allow_html=True)
             example_queries = [
                 "Compare Lebron to Curry",
@@ -123,7 +118,6 @@ class NBASportsMuseDashboard:
                 "Warriors All time stats"
             ]
             
-            # Sample displays
             col1, col2, col3 = st.columns(3)
             with col1:
                 if st.button(example_queries[0], key="example_0", use_container_width=True):
@@ -152,14 +146,12 @@ class NBASportsMuseDashboard:
                         self._process_query(example_queries[4])
             st.markdown('</div>', unsafe_allow_html=True)
             
-            # Query history
             if 'query_history' in st.session_state and st.session_state.query_history:
                 st.markdown('<div class="history-section">', unsafe_allow_html=True)
                 st.markdown("**Recent Questions:**")
                 
                 recent_queries = list(reversed(st.session_state.query_history[-3:]))
                 for i, prev_query in enumerate(recent_queries):
-                    # Truncate long queries
                     display_query = prev_query if len(prev_query) <= 50 else prev_query[:47] + "..."
                     if st.button(f"Recent: {display_query}", key=f"history_{i}", use_container_width=True):
                         self._process_query(prev_query)
@@ -168,7 +160,6 @@ class NBASportsMuseDashboard:
     def _display_loading_screen(self):
         st.markdown("# Processing your query...")
         
-        # Simple progress tracking
         progress_bar = st.progress(0)
         step_placeholder = st.empty()
         
@@ -177,7 +168,6 @@ class NBASportsMuseDashboard:
             progress_bar.progress(progress)
             step_placeholder.markdown(f"{message} ({current_step}/{total_steps})")
         
-        # Process query with progress updates
         try:
             results = self.query_router.process_query(
                 st.session_state.current_query,
@@ -194,7 +184,6 @@ class NBASportsMuseDashboard:
     def _display_results(self):
         results = st.session_state.results
         
-        # Navigation and export buttons
         col1, col2, col3 = st.columns([1, 2, 1])
         
         with col1:
@@ -208,27 +197,22 @@ class NBASportsMuseDashboard:
         
         st.markdown(f"**Query:** {st.session_state.current_query}")
         
-        # Display error if present
         if 'error' in results and results['error']:
             st.error(results["error"])
             return
         
-        # Handle disambiguation cases
         if results.get('requires_disambiguation', False):
             self._display_disambiguation(results)
             return
         
-        # Main Analysis
         if 'analysis' in results and results['analysis']:
             st.markdown("### Analysis")
             st.markdown(results['analysis'])
         
-        # Prediction Summary (if available)
         if 'prediction_summary' in results:
             st.markdown("### ML Predictions")
             st.text(results['prediction_summary'])
         
-        # Visualizations
         if 'visualizations' in results and results['visualizations']:
             st.markdown("### Charts & Analysis")
             
@@ -240,7 +224,6 @@ class NBASportsMuseDashboard:
                     try:
                         st.plotly_chart(viz['chart'], use_container_width=True)
                         
-                        # Add individual chart analysis
                         chart_analysis = self._generate_chart_analysis(viz, results, i)
                         if chart_analysis:
                             st.markdown(chart_analysis)
@@ -249,11 +232,10 @@ class NBASportsMuseDashboard:
                     except Exception as e:
                         st.error(f"Chart error: {str(e)}")
         
-        # Raw Data (expandable)
         if 'data' in results and results['data']:
             with st.expander("View Raw Data"):
                 for key, value in results['data'].items():
-                    if hasattr(value, 'to_dict'):  # DataFrame
+                    if hasattr(value, 'to_dict'):
                         st.subheader(key.replace('_', ' ').title())
                         st.dataframe(value)
                     elif isinstance(value, dict):
@@ -261,7 +243,6 @@ class NBASportsMuseDashboard:
                     else:
                         st.text(f"{key}: {value}")
         
-        # Simple action button
         if st.button("Ask Another Question", type="primary"):
             self._reset_to_main()
     
@@ -339,14 +320,13 @@ class NBASportsMuseDashboard:
         st.markdown(f"We found multiple players for **'{query}'**. Which player did you mean?")
         st.markdown("---")
         
-        # Create columns for side-by-side buttons
         cols = st.columns(len(options))
         
         for i, (col, option) in enumerate(zip(cols, options)):
             with col:
                 st.markdown(f"""
                 <div style="
-                    border: 1px solid #ddd; 
+                    border: 1px solid
                     border-radius: 8px; 
                     padding: 16px; 
                     text-align: center;
@@ -358,14 +338,11 @@ class NBASportsMuseDashboard:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Button to select this player
                 if st.button(f"Select {option['name']}", key=f"select_{option['id']}", use_container_width=True):
-                    # Reprocess the query with the full player name
                     original_query = st.session_state.current_query
                     if query in original_query:
                         new_query = original_query.replace(query, option['name'])
                     else:
-                        # Fallback: append the full name
                         new_query = f"{original_query.split()[0]} {option['name']}"
                     self._process_query(new_query)
         

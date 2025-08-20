@@ -103,8 +103,8 @@ class QueryHandler:
             requested_stats = query_details.attributes
             stats_for_radar = requested_stats
         else:
-            requested_stats = ['PTS', 'REB', 'AST', 'FG_PCT', 'STL', 'BLK']
-            stats_for_radar = ['PTS', 'REB', 'AST', 'FG_PCT', 'STL', 'BLK']
+            requested_stats = ['PPG', 'RPG', 'APG', 'FG_PCT', 'STL', 'BLK']
+            stats_for_radar = ['PPG', 'RPG', 'APG', 'FG_PCT', 'STL', 'BLK']
         
         comparison_chart = self.visualizer.create_player_comparison_chart(
             player_one_stats, player_two_stats, actual_player_one_name, actual_player_two_name,

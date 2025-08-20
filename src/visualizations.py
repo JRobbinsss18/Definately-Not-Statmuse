@@ -22,10 +22,15 @@ class NBAVisualizer:
         if historical_data.empty:
             return []
         
+        games_played_column = 'GP'
+        
+        if stat in ['PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'MIN'] and games_played_column in historical_data.columns:
+            if stat in historical_data.columns:
+                return historical_data[stat] / np.maximum(historical_data[games_played_column], MIN_GAMES_THRESHOLD)
+        
         if stat in historical_data.columns:
             return historical_data[stat]
         
-        games_played_column = 'GP'
         if games_played_column not in historical_data.columns:
             return []
 
@@ -46,24 +51,22 @@ class NBAVisualizer:
                                      player1_name: str, player2_name: str, 
                                      stats_to_compare: List[str] = None, alignment: str = "latest") -> go.Figure:
         
-        default_comparison_stats = ['PTS', 'REB', 'AST', 'FG_PCT', 'STL', 'BLK']
+        default_comparison_stats = ['PPG', 'RPG', 'APG', 'FG_PCT', 'STL', 'BLK']
         stats_to_compare = stats_to_compare or default_comparison_stats
         
-        # Get stats based on alignment method
         if alignment == "latest":
             p1_latest = player1_data.iloc[-1] if not player1_data.empty else None
             p2_latest = player2_data.iloc[-1] if not player2_data.empty else None
         elif alignment == "season1":
             p1_latest = player1_data.iloc[0] if not player1_data.empty else None
             p2_latest = player2_data.iloc[0] if not player2_data.empty else None
-        else:  # career averages
+        else:
             p1_latest = player1_data.mean() if not player1_data.empty else None
             p2_latest = player2_data.mean() if not player2_data.empty else None
         
         if p1_latest is None or p2_latest is None:
             return self._create_empty_chart("Insufficient data for comparison")
         
-        # Create radar chart
         categories = []
         player1_values = []
         player2_values = []
@@ -72,7 +75,6 @@ class NBAVisualizer:
             val1 = None
             val2 = None
             
-            # Handle per-game stats that need to be calculated
             if stat == 'PPG' and 'PTS' in p1_latest and 'PTS' in p2_latest and 'GP' in p1_latest and 'GP' in p2_latest:
                 val1 = p1_latest['PTS'] / max(p1_latest['GP'], 1)
                 val2 = p2_latest['PTS'] / max(p2_latest['GP'], 1)
@@ -83,14 +85,12 @@ class NBAVisualizer:
                 val1 = p1_latest['AST'] / max(p1_latest['GP'], 1)
                 val2 = p2_latest['AST'] / max(p2_latest['GP'], 1)
             elif stat in p1_latest and stat in p2_latest:
-                # Direct stats that exist in the data
                 val1 = float(p1_latest[stat]) if pd.notna(p1_latest[stat]) else 0
                 val2 = float(p2_latest[stat]) if pd.notna(p2_latest[stat]) else 0
             
             if val1 is not None and val2 is not None:
-                # Convert percentage stats from decimal to percentage for better display
                 if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT'] and val1 <= 1 and val2 <= 1:
-                    val1 *= 100  # Convert to percentage
+                    val1 *= 100
                     val2 *= 100
                 
                 categories.append(stat)
@@ -102,9 +102,8 @@ class NBAVisualizer:
         
         fig = go.Figure()
         
-        # Add player 1
         fig.add_trace(go.Scatterpolar(
-            r=player1_values + [player1_values[0]],  # Close the polygon
+            r=player1_values + [player1_values[0]],
             theta=categories + [categories[0]],
             fill='toself',
             name=player1_name,
@@ -112,7 +111,6 @@ class NBAVisualizer:
             line_color='rgba(31, 119, 180, 1)'
         ))
         
-        # Add player 2
         fig.add_trace(go.Scatterpolar(
             r=player2_values + [player2_values[0]],
             theta=categories + [categories[0]],
@@ -141,7 +139,6 @@ class NBAVisualizer:
         if player1_data.empty or player2_data.empty or stat not in player1_data.columns or stat not in player2_data.columns:
             return self._create_empty_chart(f"No data available for {stat} comparison")
         
-        # Align by career season number
         max_seasons = min(len(player1_data), len(player2_data))
         
         if max_seasons == 0:
@@ -151,27 +148,34 @@ class NBAVisualizer:
         
         fig = go.Figure()
         
-        # Player 1 data
+        if stat in ['PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'MIN'] and 'GP' in player1_data.columns:
+            player1_values = player1_data[stat][:max_seasons] / np.maximum(player1_data['GP'][:max_seasons], 1)
+        else:
+            player1_values = player1_data[stat][:max_seasons]
+        
+        if stat in ['PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'MIN'] and 'GP' in player2_data.columns:
+            player2_values = player2_data[stat][:max_seasons] / np.maximum(player2_data['GP'][:max_seasons], 1)
+        else:
+            player2_values = player2_data[stat][:max_seasons]
+        
         fig.add_trace(go.Scatter(
             x=seasons,
-            y=player1_data[stat][:max_seasons],
+            y=player1_values,
             mode='lines+markers',
             name=f"{player1_name}",
             line=dict(color='#1f77b4', width=3),
             marker=dict(size=8)
         ))
         
-        # Player 2 data
         fig.add_trace(go.Scatter(
             x=seasons,
-            y=player2_data[stat][:max_seasons],
+            y=player2_values,
             mode='lines+markers',
             name=f"{player2_name}",
             line=dict(color='#ff7f0e', width=3),
             marker=dict(size=8)
         ))
         
-        # Format y-axis title based on stat type
         y_title = stat
         if stat == 'FG_PCT':
             y_title = "Field Goal %"
@@ -202,22 +206,25 @@ class NBAVisualizer:
         
         fig = go.Figure()
         
-        # Create season labels
         seasons = [f"Season {i+1}" for i in range(len(player_data))]
+        
+        if stat in ['PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'MIN'] and 'GP' in player_data.columns:
+            y_values = player_data[stat] / np.maximum(player_data['GP'], 1)
+        else:
+            y_values = player_data[stat]
         
         fig.add_trace(go.Scatter(
             x=seasons,
-            y=player_data[stat],
+            y=y_values,
             mode='lines+markers',
             name=f"{player_name} {stat}",
             line=dict(color='#1f77b4', width=3),
             marker=dict(size=8)
         ))
         
-        # Add trend line
         if len(player_data) > 2:
             x_numeric = list(range(len(player_data)))
-            z = np.polyfit(x_numeric, player_data[stat].fillna(player_data[stat].mean()), 1)
+            z = np.polyfit(x_numeric, y_values.fillna(y_values.mean()), 1)
             p = np.poly1d(z)
             
             fig.add_trace(go.Scatter(
@@ -242,22 +249,18 @@ class NBAVisualizer:
         if team_data.empty:
             return self._create_empty_chart("No team data available")
         
-        # Check if this is all-time franchise data (multiple seasons)
         if len(team_data) > 5 and 'YEAR' in team_data.columns:
             return self._create_franchise_history_chart(team_data, team_name)
         
-        # Check if this is a specific season (1 row) - create league comparison chart
         if len(team_data) == 1 and 'YEAR' in team_data.columns:
             return self._create_season_vs_league_chart(team_data, team_name)
         
-        # Calculate wins/losses if not present
         if 'WL' in team_data.columns:
             wins = len(team_data[team_data['WL'] == 'W'])
             losses = len(team_data[team_data['WL'] == 'L'])
         else:
-            wins = losses = len(team_data) // 2  # Fallback
+            wins = losses = len(team_data) // 2
         
-        # Create subplots
         fig = make_subplots(
             rows=2, cols=2,
             subplot_titles=('Win/Loss Record', 'Points Per Game', 'Field Goal %', 'Rebounds Per Game'),
@@ -265,14 +268,12 @@ class NBAVisualizer:
                    [{"type": "scatter"}, {"type": "scatter"}]]
         )
         
-        # Win/Loss pie chart
         fig.add_trace(go.Pie(
             labels=['Wins', 'Losses'],
             values=[wins, losses],
             marker_colors=['green', 'red']
         ), row=1, col=1)
         
-        # Points per game over time
         if 'PTS' in team_data.columns:
             fig.add_trace(go.Scatter(
                 x=list(range(len(team_data))),
@@ -282,7 +283,6 @@ class NBAVisualizer:
                 line_color='blue'
             ), row=1, col=2)
         
-        # Field Goal Percentage
         if 'FG_PCT' in team_data.columns:
             fig.add_trace(go.Scatter(
                 x=list(range(len(team_data))),
@@ -292,7 +292,6 @@ class NBAVisualizer:
                 line_color='orange'
             ), row=2, col=1)
         
-        # Rebounds per game
         if 'REB' in team_data.columns:
             fig.add_trace(go.Scatter(
                 x=list(range(len(team_data))),
@@ -319,7 +318,6 @@ class NBAVisualizer:
         
         fig = go.Figure()
         
-        # Historical data
         seasons = [f"Season {i+1}" for i in range(len(historical_data))]
         historical_values = self._prepare_historical_data(historical_data, stat)
         
@@ -334,13 +332,11 @@ class NBAVisualizer:
                 hovertemplate=f'{stat}: %{{y:.1f}}<br>Season: %{{x}}<extra></extra>'
             ))
         
-        # Prediction
         next_season = f"Season {len(seasons) + 1}"
         prediction = pred_data['ensemble_mean']
         confidence_interval = pred_data['confidence_interval']
         confidence_percentage = pred_data.get('confidence_percentage', 75)
         
-        # Add prediction point
         fig.add_trace(go.Scatter(
             x=[seasons[-1] if seasons else "Season 1", next_season],
             y=[historical_values.iloc[-1] if len(historical_values) > 0 else prediction, prediction],
@@ -351,7 +347,6 @@ class NBAVisualizer:
             hovertemplate=f'Predicted {stat}: %{{y:.1f}}<br>Confidence: {confidence_percentage:.1f}%<br>Season: %{{x}}<extra></extra>'
         ))
         
-        # Add confidence interval
         fig.add_trace(go.Scatter(
             x=[next_season, next_season, next_season],
             y=[confidence_interval[0], prediction, confidence_interval[1]],
@@ -361,7 +356,6 @@ class NBAVisualizer:
             showlegend=False
         ))
         
-        # Add error bars for confidence interval (fixed)
         fig.add_trace(go.Scatter(
             x=[next_season],
             y=[prediction],
@@ -395,17 +389,14 @@ class NBAVisualizer:
         pred_data = predictions[stat]
         
         if 'multi_season_projections' not in pred_data:
-            # Fallback to single season chart
             return self.create_prediction_chart(historical_data, {stat: pred_data}, player_name, stat)
         
         fig = go.Figure()
         
-        # Historical data
         seasons = [f"Season {i+1}" for i in range(len(historical_data))]
         historical_values = self._prepare_historical_data(historical_data, stat)
         
         if len(historical_values) > 0:
-            # Convert percentage stats to percentage display for historical data too
             if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
                 historical_display = historical_values * 100
                 hover_template = f'{stat}: %{{y:.1f}}%<br>Season: %{{x}}<extra></extra>'
@@ -423,36 +414,29 @@ class NBAVisualizer:
                 hovertemplate=hover_template
             ))
         
-        # Multi-season projections
         projections = pred_data['multi_season_projections']
         future_seasons = [f"Season {len(seasons) + proj['season']}" for proj in projections]
         projected_values = [proj['projected_value'] for proj in projections]
         
-        # Create hover text with confidence percentages and handle percentage conversion
         confidence_percentages = [proj.get('confidence_percentage', 75) for proj in projections]
         
-        # Handle percentage stats by converting to percentage display
         if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
             display_values = [val * 100 for val in projected_values]
             hover_texts = [f'Predicted {stat}: {val:.1f}%<br>Confidence: {conf:.1f}%<br>Season: {season}' 
                           for val, conf, season in zip(display_values, confidence_percentages, future_seasons)]
-            # Use display values for the chart
             chart_projected_values = display_values
         else:
             hover_texts = [f'Predicted {stat}: {val:.1f}<br>Confidence: {conf:.1f}%<br>Season: {season}' 
                           for val, conf, season in zip(projected_values, confidence_percentages, future_seasons)]
             chart_projected_values = projected_values
         
-        # Connect last historical point to first projection (using chart values)
         if len(historical_values) > 0:
             connection_x = [seasons[-1], future_seasons[0]]
-            # Handle both pandas Series and numpy arrays
             if hasattr(historical_values, 'iloc'):
                 last_value = historical_values.iloc[-1]
             else:
                 last_value = historical_values[-1] if len(historical_values) > 0 else 0
             
-            # Convert to percentage for connection if needed
             if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
                 last_value = last_value * 100
             
@@ -467,7 +451,6 @@ class NBAVisualizer:
                 showlegend=False
             ))
         
-        # Projected performance line
         fig.add_trace(go.Scatter(
             x=future_seasons,
             y=chart_projected_values,
@@ -479,7 +462,6 @@ class NBAVisualizer:
             text=hover_texts
         ))
         
-        # Add confidence intervals for projections
         if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
             upper_bounds = [proj['confidence_interval'][1] * 100 for proj in projections]
             lower_bounds = [proj['confidence_interval'][0] * 100 for proj in projections]
@@ -487,7 +469,6 @@ class NBAVisualizer:
             upper_bounds = [proj['confidence_interval'][1] for proj in projections]
             lower_bounds = [proj['confidence_interval'][0] for proj in projections]
         
-        # Fill area between confidence bounds
         fig.add_trace(go.Scatter(
             x=future_seasons + future_seasons[::-1],
             y=upper_bounds + lower_bounds[::-1],
@@ -498,14 +479,13 @@ class NBAVisualizer:
             showlegend=True
         ))
         
-        # Add individual confidence points (use chart_projected_values for consistency)
         for i, proj in enumerate(projections):
             if stat in ['FG_PCT', 'FG3_PCT', 'FT_PCT']:
-                proj_val = chart_projected_values[i]  # Use the converted value
+                proj_val = chart_projected_values[i]
                 error_upper = proj['confidence_interval'][1] * 100 - proj_val
                 error_lower = proj_val - proj['confidence_interval'][0] * 100
             else:
-                proj_val = chart_projected_values[i]  # Use the chart value
+                proj_val = chart_projected_values[i]
                 error_upper = proj['confidence_interval'][1] - proj_val
                 error_lower = proj_val - proj['confidence_interval'][0]
             
@@ -525,7 +505,6 @@ class NBAVisualizer:
                 showlegend=False
             ))
         
-        # Format y-axis title
         stat_display = stat
         if stat == 'PTS':
             stat_display = 'Points Per Game'
@@ -560,7 +539,6 @@ class NBAVisualizer:
         
         fig = go.Figure()
         
-        # Histogram
         fig.add_trace(go.Histogram(
             x=values,
             nbinsx=20,
@@ -569,7 +547,6 @@ class NBAVisualizer:
             marker_color='lightblue'
         ))
         
-        # Add mean line
         mean_val = values.mean()
         fig.add_vline(
             x=mean_val,
@@ -606,23 +583,20 @@ class NBAVisualizer:
             horizontal_spacing=0.1
         )
         
-        # Extract years and ensure proper formatting
         years = []
         for year in team_data['YEAR']:
             if isinstance(year, str):
-                # Handle formats like "2020-21" -> take first year
                 year_str = str(year).split('-')[0]
                 if year_str.isdigit():
                     years.append(int(year_str))
                 else:
-                    years.append(2000)  # fallback
+                    years.append(2000)
             else:
                 years.append(int(year))
         
         team_data = team_data.copy()
         team_data['YEAR_INT'] = years
         
-        # 1. Win Percentage by Era
         if 'WIN_PCT' in team_data.columns:
             fig.add_trace(go.Scatter(
                 x=team_data['YEAR_INT'],
@@ -634,7 +608,6 @@ class NBAVisualizer:
                 hovertemplate='%{x}: %{y:.1f}%<extra></extra>'
             ), row=1, col=1)
             
-            # Add championship years as special markers
             if 'NBA_FINALS_APPEARANCE' in team_data.columns:
                 champ_data = team_data[team_data['NBA_FINALS_APPEARANCE'].str.contains('CHAMPION', na=False)]
                 if not champ_data.empty:
@@ -647,12 +620,10 @@ class NBAVisualizer:
                         hovertemplate='%{x}: Championship Season (%{y:.1f}%)<extra></extra>'
                     ), row=1, col=1)
         
-        # 2. Championships & Finals Appearances
         if 'NBA_FINALS_APPEARANCE' in team_data.columns:
             championship_years = team_data[team_data['NBA_FINALS_APPEARANCE'].str.contains('CHAMPION', na=False)]['YEAR_INT'].tolist()
             finals_years = team_data[team_data['NBA_FINALS_APPEARANCE'].notna()]['YEAR_INT'].tolist()
             
-            # Create decade-based championship counts
             decades = {}
             for year in championship_years:
                 decade = (year // 10) * 10
@@ -667,7 +638,6 @@ class NBAVisualizer:
                     hovertemplate='%{x}: %{y} championships<extra></extra>'
                 ), row=1, col=2)
         
-        # 3. Team Performance Timeline (full span)
         if 'WINS' in team_data.columns and 'LOSSES' in team_data.columns:
             fig.add_trace(go.Scatter(
                 x=team_data['YEAR_INT'],
@@ -687,7 +657,6 @@ class NBAVisualizer:
                 hovertemplate='%{x}: %{y} losses<extra></extra>'
             ), row=2, col=1)
         
-        # 4. Conference Rankings over time
         if 'CONF_RANK' in team_data.columns:
             valid_ranks = team_data[team_data['CONF_RANK'] > 0]
             if not valid_ranks.empty:
@@ -700,12 +669,10 @@ class NBAVisualizer:
                     hovertemplate='%{x}: #%{y} in conference<extra></extra>'
                 ), row=3, col=1)
         
-        # 5. Best & Worst Seasons
         if 'WIN_PCT' in team_data.columns:
             best_season = team_data.loc[team_data['WIN_PCT'].idxmax()]
             worst_season = team_data.loc[team_data['WIN_PCT'].idxmin()]
             
-            # Include year information in the labels
             best_year = best_season['YEAR'] if 'YEAR' in best_season else 'Unknown'
             worst_year = worst_season['YEAR'] if 'YEAR' in worst_season else 'Unknown'
             best_record = f"{best_season.get('WINS', '?')}-{best_season.get('LOSSES', '?')}"
@@ -715,7 +682,6 @@ class NBAVisualizer:
             win_pcts = [best_season['WIN_PCT'] * 100, worst_season['WIN_PCT'] * 100]
             colors = ['gold', 'darkred']
             
-            # Create detailed hover information
             hover_texts = [
                 f'Best Season: {best_year}<br>Record: {best_record}<br>Win %: {win_pcts[0]:.1f}%',
                 f'Worst Season: {worst_year}<br>Record: {worst_record}<br>Win %: {win_pcts[1]:.1f}%'
@@ -730,13 +696,10 @@ class NBAVisualizer:
                 text=hover_texts
             ), row=3, col=2)
         
-        # 6. Franchise Milestones Table
         milestones = []
         if 'NBA_FINALS_APPEARANCE' in team_data.columns:
-            # Count championships
             championships = len(team_data[team_data['NBA_FINALS_APPEARANCE'].str.contains('CHAMPION', na=False)])
             
-            # Count actual finals appearances (exclude "N/A" values)
             finals_appearances = len(team_data[
                 (team_data['NBA_FINALS_APPEARANCE'].notna()) & 
                 (team_data['NBA_FINALS_APPEARANCE'] != 'N/A')
@@ -761,7 +724,6 @@ class NBAVisualizer:
                 ['Worst Season Record', f"{worst_season['WINS']}-{worst_season['LOSSES']} ({worst_season['YEAR']})"]
             ])
             
-            # Add playoff information if available
             if 'PO_WINS' in team_data.columns and 'PO_LOSSES' in team_data.columns:
                 total_po_wins = team_data['PO_WINS'].sum()
                 total_po_losses = team_data['PO_LOSSES'].sum()
@@ -772,7 +734,6 @@ class NBAVisualizer:
                         ['Playoff Win %', f"{po_win_pct:.1f}%"]
                     ])
             
-            # Add conference/division titles if available
             if 'CONF_COUNT' in team_data.columns:
                 conf_titles = team_data['CONF_COUNT'].sum()
                 if conf_titles > 0:
@@ -800,7 +761,6 @@ class NBAVisualizer:
                 )
             ), row=4, col=1)
         
-        # Update layout
         fig.update_layout(
             title=f"{team_name} - Complete Franchise History",
             height=1200,
@@ -808,14 +768,12 @@ class NBAVisualizer:
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         
-        # Update y-axes
         fig.update_yaxes(title_text="Win Percentage (%)", row=1, col=1)
         fig.update_yaxes(title_text="Championships", row=1, col=2)
         fig.update_yaxes(title_text="Games", row=2, col=1)
-        fig.update_yaxes(title_text="Conference Rank", autorange="reversed", row=3, col=1)  # Lower rank = better
+        fig.update_yaxes(title_text="Conference Rank", autorange="reversed", row=3, col=1)
         fig.update_yaxes(title_text="Win Percentage (%)", row=3, col=2)
         
-        # Update x-axes to show years properly
         fig.update_xaxes(title_text="Year", row=1, col=1)
         fig.update_xaxes(title_text="Year", row=2, col=1)
         fig.update_xaxes(title_text="Year", row=3, col=1)
@@ -841,22 +799,19 @@ class NBAVisualizer:
             horizontal_spacing=0.15
         )
         
-        # Approximate league averages for different eras (these would ideally come from a database)
-        # Using rough historical NBA averages
         league_averages = {
-            'WIN_PCT': 0.500,  # By definition, league average is .500
-            'PTS': 110.0,      # Approximate points per game for team
-            'FG_PCT': 0.460,   # Approximate field goal percentage
-            'FG3_PCT': 0.350,  # Approximate 3-point percentage
-            'FT_PCT': 0.770,   # Approximate free throw percentage
-            'REB': 43.0,       # Approximate rebounds per game
-            'AST': 24.0,       # Approximate assists per game
-            'STL': 8.0,        # Approximate steals per game
-            'BLK': 5.0,        # Approximate blocks per game
-            'TOV': 14.0        # Approximate turnovers per game
+            'WIN_PCT': 0.500,
+            'PTS': 110.0,
+            'FG_PCT': 0.460,
+            'FG3_PCT': 0.350,
+            'FT_PCT': 0.770,
+            'REB': 43.0,
+            'AST': 24.0,
+            'STL': 8.0,
+            'BLK': 5.0,
+            'TOV': 14.0
         }
         
-        # 1. Win Percentage vs League
         if 'WIN_PCT' in season_row:
             team_win_pct = season_row['WIN_PCT'] * 100
             league_win_pct = league_averages['WIN_PCT'] * 100
@@ -869,7 +824,6 @@ class NBAVisualizer:
                 hovertemplate='%{x}: %{y:.1f}%<extra></extra>'
             ), row=1, col=1)
         
-        # 2. Offensive Performance (Points, FG%, 3P%)
         offensive_stats = ['PTS', 'FG_PCT', 'FG3_PCT']
         offensive_labels = ['Points/Game', 'FG%', '3P%']
         team_offensive = []
@@ -907,7 +861,6 @@ class NBAVisualizer:
                 hovertemplate='%{x}: %{y:.1f}<extra></extra>'
             ), row=1, col=2)
         
-        # 3. Efficiency Metrics (Rebounds, Assists, Turnovers per game)
         efficiency_stats = ['REB', 'AST', 'TOV']
         efficiency_labels = ['Rebounds/Game', 'Assists/Game', 'Turnovers/Game']
         team_efficiency = []
@@ -939,7 +892,6 @@ class NBAVisualizer:
                 showlegend=False
             ), row=2, col=1)
         
-        # 4. Season Context Table
         context_data = []
         if 'WIN_PCT' in season_row and 'WINS' in season_row and 'LOSSES' in season_row:
             record = f"{season_row['WINS']}-{season_row['LOSSES']}"
@@ -959,7 +911,6 @@ class NBAVisualizer:
         if 'NBA_FINALS_APPEARANCE' in season_row and season_row['NBA_FINALS_APPEARANCE'] != 'N/A':
             context_data.append(['Playoff Result', season_row['NBA_FINALS_APPEARANCE']])
         
-        # Add league comparison summary
         if 'WIN_PCT' in season_row:
             team_win_pct = season_row['WIN_PCT']
             if team_win_pct > 0.600:
@@ -989,14 +940,12 @@ class NBAVisualizer:
                 )
             ), row=2, col=2)
         
-        # Update layout
         fig.update_layout(
             title=f"{team_name} {season_year} Season - League Comparison Analysis",
             height=800,
             showlegend=True
         )
         
-        # Update y-axes
         fig.update_yaxes(title_text="Win Percentage (%)", row=1, col=1)
         fig.update_yaxes(title_text="Performance", row=1, col=2)
         fig.update_yaxes(title_text="Per Game Stats", row=2, col=1)
