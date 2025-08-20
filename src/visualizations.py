@@ -67,6 +67,12 @@ class NBAVisualizer:
             elif stat == 'APG' and 'AST' in p1_latest and 'AST' in p2_latest and 'GP' in p1_latest and 'GP' in p2_latest:
                 val1 = p1_latest['AST'] / max(p1_latest['GP'], 1)
                 val2 = p2_latest['AST'] / max(p2_latest['GP'], 1)
+            elif stat == 'STL' and 'STL' in p1_latest and 'STL' in p2_latest and 'GP' in p1_latest and 'GP' in p2_latest:
+                val1 = p1_latest['STL'] / max(p1_latest['GP'], 1)
+                val2 = p2_latest['STL'] / max(p2_latest['GP'], 1)
+            elif stat == 'BLK' and 'BLK' in p1_latest and 'BLK' in p2_latest and 'GP' in p1_latest and 'GP' in p2_latest:
+                val1 = p1_latest['BLK'] / max(p1_latest['GP'], 1)
+                val2 = p2_latest['BLK'] / max(p2_latest['GP'], 1)
             elif stat in p1_latest and stat in p2_latest:
                 val1 = float(p1_latest[stat]) if pd.notna(p1_latest[stat]) else 0
                 val2 = float(p2_latest[stat]) if pd.notna(p2_latest[stat]) else 0
